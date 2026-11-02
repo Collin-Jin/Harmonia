@@ -72,8 +72,8 @@ export function critique(arr: Arrangement): Critique {
           const da = a1 - a0;
           const db = b1 - b0;
           if (!da || !db || Math.sign(da) !== Math.sign(db)) continue;
-          const i1 = mod12(a0 - b0);
-          const i2 = mod12(a1 - b1);
+          const i1 = mod12(Math.abs(a0 - b0)); // a 4th above is not a 5th below
+          const i2 = mod12(Math.abs(a1 - b1));
           if (i1 === i2 && (i1 === 0 || i1 === 7)) c.parallels++;
           else if (bassIdx >= 0 && i === 0 && j === bassIdx + 1 && (i2 === 0 || i2 === 7) && Math.abs(da) > 2) c.hiddenOuter++;
         }

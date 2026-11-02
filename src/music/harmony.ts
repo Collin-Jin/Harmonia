@@ -49,7 +49,7 @@ function slotsFor(style: HarmonyStyle, n: number, placement: Placement, variant:
       const bass = S('Bass', 'B', placement === 'below' ? -17 : -14, { bass: true });
       if (placement === 'above') {
         const hi = S('High Harmony', 'Hi', 4, { parallel: true, shadow: 2 });
-        const top = alt ? S('Top Harmony', 'Top', 7, { shadow: 4 }) : S('Top Harmony', 'Top', 9, { shadow: 5 });
+        const top = alt ? S('Top Harmony', 'Top', 7) : S('Top Harmony', 'Top', 9, { shadow: 5 });
         list = n >= 4 ? [hi, top, S('Low Harmony', 'Lo', -5), bass] : n === 3 ? [hi, top, bass] : [hi, top];
       } else if (placement === 'below') {
         const lo = alt ? S('Low Harmony', 'Lo', -5, { parallel: true, shadow: -3 }) : S('Low Harmony', 'Lo', -4, { parallel: true, shadow: -2 });
@@ -209,11 +209,12 @@ function candidatePitches(ctx: Ctx, ev: Event, v: number): { midi: number; penal
     const pen = allowed.get(mod12(m));
     if (pen !== undefined) out.push({ midi: m, penalty: pen });
   }
-  // Parallel diatonic 3rds/6ths (pop stacks, barbershop tenor) — even when not a chord tone.
-  if (slot.parallel || (ctx.style === 'pop' && !ev.leadIsChordTone)) {
+  // Parallel diatonic 3rds/6ths through the melody's passing tones (pop stacks, barbershop tenor).
+  // Where the melody sits on a chord tone the harmony must too, or the voicing contradicts the chord symbol.
+  if ((slot.parallel || ctx.style === 'pop') && !ev.leadIsChordTone) {
     for (const steps of [2, -2, 5, -5]) {
       const m = diatonicStep(ev.lead, steps, ctx.key);
-      if (m >= lo && m <= hi && !out.some((o) => o.midi === m)) out.push({ midi: m, penalty: ev.leadIsChordTone ? 0.7 : 0.3 });
+      if (m >= lo && m <= hi && !out.some((o) => o.midi === m)) out.push({ midi: m, penalty: 0.3 });
     }
   }
   out.sort((a, b) => Math.abs(a.midi - c) - Math.abs(b.midi - c));
@@ -225,7 +226,8 @@ function candidatePitches(ctx: Ctx, ev: Event, v: number): { midi: number; penal
   }
   if (slot.shadow !== undefined) {
     const m = diatonicStep(ev.lead, slot.shadow, ctx.key);
-    if (m >= 33 && m <= 86 && !kept.some((o) => o.midi === m)) kept.push({ midi: m, penalty: 0 });
+    const fits = pcs.includes(mod12(m)) || !ev.leadIsChordTone;
+    if (fits && m >= 33 && m <= 86 && !kept.some((o) => o.midi === m)) kept.push({ midi: m, penalty: 0 });
   }
   return kept;
 }
@@ -324,11 +326,8 @@ function staticCost(ctx: Ctx, ev: Event, h: number[]): number {
     if (slot.shadow !== undefined) {
       // A voice that keeps one shape against the melody reads as a line, not a sequence of
       // chord tones — as long as the shape agrees with the harmony where it is exposed.
-      if (m === diatonicStep(ev.lead, slot.shadow, ctx.key)) {
-        const ct = pcs.includes(mod12(m));
-        const strong = ev.start % (UNITS_PER_BEAT * 2) === 0 && ev.dur >= UNITS_PER_BEAT * 2;
-        cost -= ct ? 2.2 : !ev.leadIsChordTone ? 1.8 : strong ? 0.4 : 1.2;
-      }
+      // Only a preference: long runs of it are broken up in transitionCost.
+      if (m === diatonicStep(ev.lead, slot.shadow, ctx.key)) cost -= pcs.includes(mod12(m)) ? 1.0 : 0.8;
     } else if (slot.parallel || style === 'pop') {
       const d = Math.abs(m - ev.lead);
       if ([3, 4, 8, 9, 15, 16].includes(d)) cost -= slot.parallel ? 0.9 : 0.4;
@@ -343,6 +342,12 @@ function staticCost(ctx: Ctx, ev: Event, h: number[]): number {
       else if (ev.cadence) b += idx === 0 ? -0.8 : 1.5;
       cost += b;
     }
+  }
+  // Through a passing tone one voice may shadow the melody; the rest hold chord tones, so the
+  // moment still sounds like the written chord rather than a new one.
+  if (style === 'pop' || style === 'barbershop') {
+    const foreign = h.filter((m) => !pcs.includes(mod12(m))).length;
+    if (foreign) cost += (foreign - 1) * 3 + (ev.start % (UNITS_PER_BEAT * 2) === 0 ? 0.6 : 0);
   }
   // Every upper voice should add something: avoid octave duplicates among the harmony parts.
   if (style !== 'choral' && style !== 'barbershop') {
@@ -384,7 +389,7 @@ function transitionCost(ctx: Ctx, prevEv: Event, ev: Event, a: number[], b: numb
   // Parallel perfect intervals between every pair (melody included).
   const pa = [...a, prevEv.lead];
   const pb = [...b, ev.lead];
-  const par = style === 'choral' ? 4 : style === 'barbershop' ? 1.5 : style === 'pad' ? 1 : style === 'jazz' ? 0.6 : 0.8;
+  const par = style === 'choral' ? 4 : style === 'pop' ? 3 : style === 'barbershop' ? 1.5 : style === 'pad' ? 1 : style === 'jazz' ? 0.6 : 0.8;
   for (let i = 0; i < pa.length; i++) {
     for (let j = i + 1; j < pa.length; j++) {
       const di = pb[i] - pa[i];
@@ -426,6 +431,20 @@ function transitionCost(ctx: Ctx, prevEv: Event, ev: Event, a: number[], b: numb
     }
   }
   return cost;
+}
+
+/**
+ * Per voice: how many moves in a row it has copied the melody's motion at the same interval.
+ * More than three in a row stops sounding like a harmony and starts sounding like a transposed copy.
+ */
+function parallelRuns(prevEv: Event, ev: Event, a: number[], b: number[], runs: number[]): number[] {
+  const melD = ev.lead - prevEv.lead;
+  return a.map((x, v) => {
+    const d = b[v] - x;
+    if (melD === 0 && d === 0) return runs[v]; // a repeated note neither extends nor breaks the run
+    const same = melD !== 0 && Math.sign(d) === Math.sign(melD) && Math.abs(b[v] - ev.lead - (x - prevEv.lead)) <= 1;
+    return same ? runs[v] + 1 : 0;
+  });
 }
 
 function clefFor(notes: { midi: number }[]): ClefKind {
@@ -493,6 +512,7 @@ export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangem
     combo: number[];
     cost: number;
     parent: State | null;
+    runs: number[];
   }
   const BEAM = 40;
   let beam: State[] = [];
@@ -505,16 +525,18 @@ export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangem
     }));
     const next = new Map<string, State>();
     if (ei === 0) {
-      for (const c of combos) next.set(c.key, { combo: c.combo, cost: c.stat, parent: null });
+      for (const c of combos) next.set(c.key, { combo: c.combo, cost: c.stat, parent: null, runs: c.combo.map(() => 0) });
     } else {
       const prevEv = events[ei - 1];
       for (const s of beam) {
         const sKey = s.combo.join(',');
         for (const c of combos) {
+          const runs = parallelRuns(prevEv, ev, s.combo, c.combo, s.runs);
           let total = s.cost + c.stat + transitionCost(ctx, prevEv, ev, s.combo, c.combo, s.parent?.combo ?? null);
+          if (style !== 'pad') for (const r of runs) if (r > 3) total += 0.8 * (r - 3);
           if (ev.holdable && c.key === sKey) total -= 1.0;
           const ex = next.get(c.key);
-          if (!ex || total < ex.cost) next.set(c.key, { combo: c.combo, cost: total, parent: s });
+          if (!ex || total < ex.cost) next.set(c.key, { combo: c.combo, cost: total, parent: s, runs });
         }
       }
     }
