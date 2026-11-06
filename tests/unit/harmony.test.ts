@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DOMParser } from '@xmldom/xmldom';
 import { Midi } from '@tonejs/midi';
 import { harmonize, STYLE_INFO } from '../../src/music/harmony';
-import { chordPcs, detectChords } from '../../src/music/chords';
+import { chordAt, chordPcs, detectChords } from '../../src/music/chords';
 import { toMusicXML } from '../../src/music/musicxml';
 import { toMidi } from '../../src/music/midi';
 import { detectKey } from '../../src/music/key';
@@ -99,16 +99,48 @@ describe('harmony generation', () => {
     }
   }
 
-  it('pop harmonies move as steady parallel lines (3rd above / 3rd below by default)', () => {
+  it('pop harmonies sing the written chord wherever the melody does', () => {
+    for (const seed of [0, 1])
+      for (const placement of ['around', 'above', 'below'] as const) {
+        const arr = harmonize(input, { ...base, seed, placement });
+        arr.melody.notes.forEach((n, i) => {
+          const pcs = chordPcs(chordAt(arr.chords, n.start));
+          if (!pcs.includes(mod12(n.midi))) return; // passing tones may be shadowed in 3rds
+          for (const p of arr.live[i].pitches) if (p !== null) expect(pcs, `${placement} seed ${seed} at ${n.start}`).toContain(mod12(p));
+        });
+        // through a passing tone at most one voice leaves the chord
+        arr.melody.notes.forEach((n, i) => {
+          const pcs = chordPcs(chordAt(arr.chords, n.start));
+          expect(arr.live[i].pitches.filter((p) => p !== null && !pcs.includes(mod12(p))).length, `${placement} seed ${seed} at ${n.start}`).toBeLessThanOrEqual(1);
+        });
+        expect(critique(arr).parallels, `${placement} seed ${seed}`).toBe(0);
+      }
+  });
+
+  it('pop harmonies lean on 3rds and 6ths without copying the melody for long', () => {
     for (const seed of [0, 1]) {
       const arr = harmonize(input, { ...base, seed });
       const [hi, lo] = arr.harmonies;
-      const shape = (part: number, steps: number) =>
-        arr.melody.notes.filter((n, i) => arr.live[i].pitches[part] === diatonicStep(n.midi, steps, C)).length / arr.melody.notes.length;
       expect(hi.name).toBe('High Harmony');
-      expect(shape(0, 2)).toBeGreaterThan(0.9);
-      expect(shape(1, seed === 0 ? -2 : -3)).toBeGreaterThan(0.85);
-      expect(lo.notes.length).toBeGreaterThan(20);
+      expect(lo.notes.length).toBeGreaterThan(12);
+      const third = (part: number, steps: number) =>
+        arr.melody.notes.filter((n, i) => arr.live[i].pitches[part] === diatonicStep(n.midi, steps, C)).length / arr.melody.notes.length;
+      expect(third(0, 2)).toBeGreaterThan(0.4);
+      // longest run of moves in which a voice copies the melody's motion at the same interval
+      for (let v = 0; v < 2; v++) {
+        let run = 0;
+        let longest = 0;
+        for (let i = 1; i < arr.melody.notes.length; i++) {
+          const melD = arr.melody.notes[i].midi - arr.melody.notes[i - 1].midi;
+          const a = arr.live[i - 1].pitches[v] as number;
+          const b = arr.live[i].pitches[v] as number;
+          if (melD === 0 && a === b) continue;
+          const same = melD !== 0 && Math.sign(b - a) === Math.sign(melD) && Math.abs(b - arr.melody.notes[i].midi - (a - arr.melody.notes[i - 1].midi)) <= 1;
+          run = same ? run + 1 : 0;
+          longest = Math.max(longest, run);
+        }
+        expect(longest, `voice ${v} seed ${seed}`).toBeLessThanOrEqual(4);
+      }
     }
   });
 
