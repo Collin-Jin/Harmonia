@@ -27,6 +27,8 @@ interface Slot {
   parallel?: boolean; // favours parallel 3rds/6ths with the melody
   /** Diatonic steps from the melody this voice prefers to shadow (2 = 3rd above, -5 = 6th below). */
   shadow?: number;
+  /** May double the melody or the high harmony an octave up instead of a line of its own. */
+  doubles?: boolean;
 }
 
 export const STYLE_INFO: Record<HarmonyStyle, { label: string; blurb: string; maxVoices: number; placement: boolean }> = {
@@ -48,7 +50,7 @@ function slotsFor(style: HarmonyStyle, n: number, placement: Placement, variant:
       const alt = variant % 2 === 1;
       const hi = S('High Harmony', 'Hi', 4, { parallel: true, shadow: 2 });
       const lo = alt ? S('Low Harmony', 'Lo', -5, { parallel: true, shadow: -3 }) : S('Low Harmony', 'Lo', -4, { parallel: true, shadow: -2 });
-      list = [hi, lo, S('Top Harmony', 'Top', 8)];
+      list = [hi, lo, S('Top Harmony', 'Top', 8, { doubles: true })];
       break;
     }
     case 'choral':
@@ -152,7 +154,11 @@ function buildEvents(melody: ScoreNote[], chords: Chord[], style: HarmonyStyle, 
     return events;
   }
   return melody.map((n, i) => {
-    const chord = chordAt(chords, n.start);
+    // A note sung just before a chord change (an anticipation) mostly sounds under the next
+    // chord, so it is harmonized with that one.
+    let chord = chordAt(chords, n.start);
+    const next = chords[chords.indexOf(chord) + 1];
+    if (next && next.start > n.start && n.start + n.dur - next.start > next.start - n.start) chord = next;
     const pcs = chordPcs(chord);
     const isCT = pcs.includes(mod12(n.midi));
     const onBeat = n.start % UNITS_PER_BEAT === 0;
@@ -436,6 +442,67 @@ function parallelRuns(prevEv: Event, ev: Event, a: number[], b: number[], runs: 
   });
 }
 
+type TopMode = 'own' | 'melody' | 'high';
+
+/** Event ranges [first, last] of each phrase: up to a cadence or a rest of a beat or more. */
+function phrasesOf(events: Event[]): [number, number][] {
+  const out: [number, number][] = [];
+  let a = 0;
+  events.forEach((ev, i) => {
+    const next = events[i + 1];
+    if (!next || ev.cadence || next.start - (ev.start + ev.dur) >= UNITS_PER_BEAT) {
+      out.push([a, i]);
+      a = i + 1;
+    }
+  });
+  return out;
+}
+
+/** The part the top voice may double: the next one down. */
+const highOf = (ctx: Ctx, top: number) =>
+  ctx.slots.reduce((best, s, v) => (v !== top && (best < 0 || s.offset > ctx.slots[best].offset) ? v : best), -1);
+
+const topPitch = (mode: TopMode, ev: Event, combo: number[], top: number, high: number) =>
+  mode === 'melody' ? ev.lead + 12 : mode === 'high' && high >= 0 ? combo[high] + 12 : combo[top];
+
+/**
+ * Pop's top part, phrase by phrase: its own line, the melody an octave up, or the high harmony
+ * an octave up. Its own line is kept where it moves and fits the chord; where it would park on
+ * one note while the melody moves, or sit off the chord, a doubling sounds better.
+ */
+function topModes(ctx: Ctx, voiced: { events: Event[]; path: number[][] }, top: number): TopMode[] {
+  const high = highOf(ctx, top);
+  const bias: Record<TopMode, number> = { own: 0, melody: 0.35, high: 0.45 };
+  return phrasesOf(voiced.events).map(([a, b], p) => {
+    let best: TopMode = 'own';
+    let bestCost = Infinity;
+    for (const mode of ['own', 'melody', 'high'] as TopMode[]) {
+      if (mode === 'high' && high < 0) continue;
+      let cost = ctx.seed ? 0.3 * hashNoise(ctx.seed, 500 + p, mode.length) * (b - a + 1) : 0;
+      for (let i = a; i <= b; i++) {
+        const ev = voiced.events[i];
+        const combo = voiced.path[i];
+        if (!combo) continue;
+        const m = topPitch(mode, ev, combo, top, high);
+        // stays the top part, within reach of the singer's voice
+        if ((high >= 0 && m <= combo[high]) || m > 81) cost = Infinity;
+        cost += bias[mode];
+        if (mode === 'own' && ev.leadIsChordTone && !chordPcs(ev.chord).includes(mod12(m))) cost += 2;
+        for (const o of [ev.lead, ...combo.filter((_, v) => v !== top)]) if ([1, 11].includes(mod12(Math.abs(m - o)))) cost += 3;
+        if (i > a) {
+          const prev = topPitch(mode, voiced.events[i - 1], voiced.path[i - 1] ?? combo, top, high);
+          if (prev === m && voiced.events[i - 1].lead !== ev.lead) cost += 0.6;
+        }
+      }
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = mode;
+      }
+    }
+    return best;
+  });
+}
+
 function clefFor(notes: { midi: number }[]): ClefKind {
   if (!notes.length) return 'treble';
   const sorted = notes.map((n) => n.midi).sort((a, b) => a - b);
@@ -564,7 +631,20 @@ export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangem
     }
     return { events, path };
   };
-  const { events, path } = edits.length ? voiceLead(chords, { spans: edits, base: voiceLead(base) }) : voiceLead(chords);
+  const auto = edits.length ? voiceLead(base) : null;
+  const { events, path } = auto ? voiceLead(chords, { spans: edits, base: auto }) : voiceLead(chords);
+  const top = slots.findIndex((s) => s.doubles);
+  if (top >= 0) {
+    // the choice is made on the automatic progression, so a chord edit doesn't flip whole phrases
+    const modes = topModes(ctx, auto ?? { events, path }, top);
+    phrasesOf(events).forEach(([a, b], p) => {
+      for (let i = a; i <= b; i++) {
+        if (!path[i]) continue;
+        path[i] = path[i].slice();
+        path[i][top] = topPitch(modes[p] ?? 'own', events[i], path[i], top, highOf(ctx, top));
+      }
+    });
+  }
 
   // Build voice parts.
   const vowels: Vowel[] = style === 'pad' ? ['oo', 'oo', 'oo', 'oo'] : style === 'jazz' ? ['oo', 'oo', 'oo', 'oo'] : ['ah', 'ah', 'ah', 'ah'];
