@@ -53,7 +53,7 @@ export function ScorePanel() {
   const arr = useStore((s) => s.arrangement)!;
   const title = useStore((s) => s.title);
   const toast = useStore((s) => s.toast);
-  const hasEdits = useStore((s) => Object.keys(s.pitchEdits).length + Object.keys(s.lyricEdits).length + Object.keys(s.harmonyEdits).length > 0);
+  const hasEdits = useStore((s) => Object.keys(s.pitchEdits).length + Object.keys(s.deletedNotes).length + Object.keys(s.lyricEdits).length + Object.keys(s.harmonyEdits).length > 0);
   const resetEdits = useStore((s) => s.resetEdits);
   const [busy, setBusy] = useState<string | null>(null);
 

@@ -7,6 +7,7 @@ import { HarmonyPanel } from './components/HarmonyPanel';
 import { Welcome } from './components/Welcome';
 import { RecordingStage } from './components/RecordingStage';
 import { ScorePanel } from './components/ScorePanel';
+import { ReviewStage } from './components/ReviewStage';
 import { LivePanel } from './components/LivePanel';
 import { Mixer } from './components/Mixer';
 import { Dock } from './components/Dock';
@@ -21,11 +22,11 @@ export default function App() {
   return (
     <div className="app">
       <Header onHelp={() => setHelp(true)} />
-      <main className={`workspace ${phase === 'ready' ? 'ready' : ''}`}>
+      <main className={`workspace ${phase === 'ready' || phase === 'review' ? 'ready' : ''}`}>
         <aside className="sidebar">
           <CapturePanel />
           {hasArrangement && <AnalysisPanel />}
-          {hasArrangement && <HarmonyPanel />}
+          {hasArrangement && phase === 'ready' && <HarmonyPanel />}
         </aside>
         <section className="stage">
           {phase === 'empty' && <Welcome onHelp={() => setHelp(true)} />}
@@ -44,6 +45,7 @@ export default function App() {
               <div>Writing down your notes, finding the beat and key, then arranging the harmony.</div>
             </div>
           )}
+          {phase === 'review' && hasArrangement && <ReviewStage />}
           {phase === 'ready' && hasArrangement && (
             <>
               <ScorePanel />

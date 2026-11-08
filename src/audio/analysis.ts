@@ -51,9 +51,10 @@ export function processVoiceInWorker(
   frames: TuneFrame[],
   notes: TuneNote[],
   mode: AutotuneMode,
+  mutes: TuneNote[] = [],
 ): Promise<Float32Array> {
   const copy = samples.slice();
-  return run({ type: 'voice', samples: copy, sampleRate, frames, notes, mode }, () => processVoice(samples, sampleRate, frames, notes, mode), [
+  return run({ type: 'voice', samples: copy, sampleRate, frames, notes, mode, mutes }, () => processVoice(samples, sampleRate, frames, notes, mode, mutes), [
     copy.buffer,
   ]);
 }

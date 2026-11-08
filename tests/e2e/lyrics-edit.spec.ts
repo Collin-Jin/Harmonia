@@ -125,7 +125,8 @@ test('hummed take: no lyrics in the score, harmony can sing a vowel', async ({ p
   const errors = collectErrors(page);
   await page.goto('/');
   await page.locator('input[type=file]').setInputFiles(fixture('ode-hummed.wav'));
-  await expect(page.getByTestId('analysis-panel')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId('review-stage')).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId('review-continue').click();
   await expect(page.getByTestId('lyrics-status')).toHaveAttribute('data-status', 'hummed', { timeout: 30_000 });
   await expect(page.getByTestId('lyric-line')).toHaveCount(0);
   const s = await state(page);

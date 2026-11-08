@@ -46,7 +46,9 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
             <span className="mark">B</span> What I heard
           </h4>
           <p>
-            Check the detected key, tempo and metre. If one is off, change it and everything is re-written to match. The first time you sing words,
+            After you record or import a take, <b>Check your notes</b> shows the melody as heard on a piano roll. Drag a note up or down to fix
+            its pitch, or select it and press Delete to remove a breath or noise heard as a note; play it back in your voice or on a piano, then
+            press <b>Harmonize</b>. The key, tempo and metre can be corrected here too, and <b>Fix</b> brings you back later. The first time you sing words,
             a small speech model (about 77 MB) downloads once so the harmony can sing them. After that it runs offline on your computer.
           </p>
         </section>

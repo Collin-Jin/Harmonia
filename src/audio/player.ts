@@ -4,6 +4,8 @@ import { TimeMap } from '../music/timemap';
 import type { Arrangement, ScoreNote, Transcription, VoicePart } from '../music/types';
 
 export type MelodySource = 'recording' | 'synth' | 'off';
+/** How the melody sounds when it is played on its own ("Check your notes"). */
+export type MelodyTone = 'recording' | 'piano';
 
 export interface PartMix {
   gain: number;
@@ -25,6 +27,8 @@ export interface PlayOptions {
   transcription?: Transcription | null;
   /** Harmony parts sung in the singer's voice (recording time); others use the choir synth. */
   voiceParts?: Record<string, RecordingAudio> | null;
+  /** Play only the melody, as the take (tuned) or on a piano, timed as it was sung. */
+  melodyOnly?: MelodyTone;
 }
 
 const PANS = [-0.35, 0.35, -0.6, 0.6, 0];
@@ -59,11 +63,47 @@ function scheduleNotes(voice: VocalVoice, notes: ScoreNote[], map: TimeMap, from
   });
 }
 
+/** A plain piano-like tone for each note: a clear reference for checking pitches by ear. */
+function schedulePiano(ctx: BaseAudioContext, bus: MasterBus, notes: ScoreNote[], map: TimeMap, fromUnit: number, t0: number, origin: number): OscillatorNode[] {
+  const out: OscillatorNode[] = [];
+  for (const n of notes) {
+    if (n.start + n.dur <= fromUnit) continue;
+    const start = Math.max(n.start, fromUnit);
+    const ts = t0 + map.sec(start) - origin;
+    const te = t0 + map.sec(n.start + n.dur) - origin;
+    const f = 440 * Math.pow(2, (n.midi - 69) / 12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, ts);
+    g.gain.exponentialRampToValueAtTime(0.3, ts + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.09, ts + 0.45);
+    g.gain.setTargetAtTime(0.0001, Math.max(ts + 0.05, te - 0.02), 0.06);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = Math.min(7000, f * 4);
+    lp.connect(g).connect(bus.input);
+    for (const [mult, level, type] of [
+      [1, 1, 'triangle'],
+      [2, 0.18, 'sine'],
+    ] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = f * mult;
+      const og = ctx.createGain();
+      og.gain.value = level;
+      o.connect(og).connect(lp);
+      o.start(ts);
+      o.stop(te + 0.4);
+      out.push(o);
+    }
+  }
+  return out;
+}
+
 /** Builds the voice graph for an arrangement on any (realtime or offline) context. */
 function buildGraph(ctx: BaseAudioContext, bus: MasterBus, arr: Arrangement, opts: PlayOptions) {
   const parts: { part: VoicePart; voice: VocalVoice; gain: GainNode }[] = [];
   const sung: { part: VoicePart; src: AudioBufferSourceNode; gain: GainNode }[] = [];
-  const list: VoicePart[] = [...(opts.melodySource === 'synth' ? [arr.melody] : []), ...arr.harmonies];
+  const list: VoicePart[] = opts.melodyOnly ? [] : [...(opts.melodySource === 'synth' ? [arr.melody] : []), ...arr.harmonies];
   list.forEach((p, i) => {
     const gain = ctx.createGain();
     gain.gain.value = effectiveGain(opts.mix, p.id);
@@ -92,13 +132,13 @@ function buildGraph(ctx: BaseAudioContext, bus: MasterBus, arr: Arrangement, opt
   });
   let recGain: GainNode | null = null;
   let recSrc: AudioBufferSourceNode | null = null;
-  if (opts.melodySource === 'recording' && opts.recording) {
+  if ((opts.melodyOnly ? opts.melodyOnly === 'recording' : opts.melodySource === 'recording') && opts.recording) {
     const buf = ctx.createBuffer(1, opts.recording.samples.length, opts.recording.sampleRate);
     buf.getChannelData(0).set(opts.recording.samples);
     recSrc = ctx.createBufferSource();
     recSrc.buffer = buf;
     recGain = ctx.createGain();
-    recGain.gain.value = effectiveGain(opts.mix, 'melody') * 1.25;
+    recGain.gain.value = opts.melodyOnly ? 1.1 : effectiveGain(opts.mix, 'melody') * 1.25;
     recSrc.connect(recGain).connect(bus.input);
   }
   return { parts, sung, recGain, recSrc };
@@ -106,7 +146,7 @@ function buildGraph(ctx: BaseAudioContext, bus: MasterBus, arr: Arrangement, opt
 
 function timeMapFor(arr: Arrangement, opts: PlayOptions): { map: TimeMap; followsRecording: boolean } {
   const ownVoice = !!opts.voiceParts && Object.keys(opts.voiceParts).length > 0;
-  if ((opts.melodySource === 'recording' || ownVoice) && opts.recording && opts.transcription) {
+  if ((opts.melodySource === 'recording' || ownVoice || opts.melodyOnly) && opts.recording && opts.transcription) {
     const tr = opts.transcription;
     return { map: TimeMap.fromPerformance(tr.notes, tr.bpm, tr.originSec), followsRecording: true };
   }
@@ -119,6 +159,7 @@ export class ArrangementPlayer {
   private originSec = 0;
   private map: TimeMap | null = null;
   private endTimer: number | null = null;
+  private pianoNotes: OscillatorNode[] = [];
   playing = false;
   onEnded?: () => void;
 
@@ -138,6 +179,7 @@ export class ArrangementPlayer {
       scheduleNotes(voice, part.notes, map, from, t0, this.originSec, part.id === 'melody' ? 1 : 0.95);
     });
     if (this.graph.recSrc) this.graph.recSrc.start(t0, Math.max(0, this.originSec));
+    if (opts.melodyOnly === 'piano') this.pianoNotes = schedulePiano(ctx, bus, arr.melody.notes, map, from, t0, this.originSec);
     this.graph.sung.forEach(({ src }) => src.start(t0, Math.max(0, this.originSec)));
     this.playing = true;
     const endSec = map.sec(arr.totalUnits) - this.originSec + 1.2;
@@ -165,6 +207,13 @@ export class ArrangementPlayer {
   stop() {
     if (this.endTimer !== null) window.clearTimeout(this.endTimer);
     this.endTimer = null;
+    for (const o of this.pianoNotes)
+      try {
+        o.stop();
+      } catch {
+        /* not started */
+      }
+    this.pianoNotes = [];
     if (this.graph) {
       const ctx = getAudioContext();
       const g = this.graph;

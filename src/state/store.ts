@@ -18,7 +18,8 @@ import type {
 } from '../music/types';
 import type { MelodySource, MixState, RecordingAudio } from '../audio/player';
 
-export type Phase = 'empty' | 'recording' | 'analyzing' | 'ready';
+/** review: the user checks the notes heard before harmonizing (after their own takes). */
+export type Phase = 'empty' | 'recording' | 'analyzing' | 'review' | 'ready';
 
 export interface LiveSettings {
   allowTranspose: boolean;
@@ -86,6 +87,8 @@ interface State {
   lyricEdits: Record<string, Lyric | null>;
   /** Melody pitches changed by the user, by performed onset (ms). */
   pitchEdits: Record<string, number>;
+  /** Melody notes the user removed (a breath or noise heard as a note), by performed onset (ms). */
+  deletedNotes: Record<string, true>;
   harmonyEdits: Record<string, HarmonyEdit>;
   /** Chords the user picked, each pinned to its span; they survive style and chord-rate changes. */
   chordEdits: Chord[];
@@ -117,7 +120,8 @@ interface State {
   /** Compose a different progression (chords) or a different set of lines over the same chords (voicing). */
   newVariation: (kind: 'chords' | 'voicing') => void;
   stepVariation: (dir: -1 | 1) => void;
-  setAnalysis: (r: { recording: RecordingAudio; frames: PitchFrame[]; transcription: Transcription; title?: string }) => void;
+  /** A new take is in; `review` opens "Check your notes" before showing the arrangement. */
+  setAnalysis: (r: { recording: RecordingAudio; frames: PitchFrame[]; transcription: Transcription; title?: string; review?: boolean }) => void;
   setLyrics: (p: Partial<LyricsState>) => void;
   retranscribe: (p: { bpm?: number; timeSig?: TimeSignature; key?: Key }) => void;
   setPartMix: (id: string, p: Partial<MixState[string]>) => void;
@@ -125,6 +129,13 @@ interface State {
   setPartSound: (id: string, sound: HarmonySound | null) => void;
   editNotePitch: (partId: string, index: number, midi: number) => void;
   editNoteLyric: (partId: string, index: number, text: string) => void;
+  deleteNote: (index: number) => void;
+  /** Bring back a removed melody note, by its key (noteKey). */
+  restoreNote: (key: string) => void;
+  /** Undo every pitch change and removal on the melody. */
+  resetNotes: () => void;
+  openReview: () => void;
+  finishReview: () => void;
   /** Use `chord` for its span, replacing any edit it overlaps. */
   editChord: (chord: Chord) => void;
   /** Drop the user's chord at `start` and go back to the automatic choice. */
@@ -254,14 +265,17 @@ function buildArrangement(s: Inputs): Arrangement | null {
   return touched ? { ...arr, harmonies, live: liveSteps(arr.melody.notes, harmonies, arr.options.style) } : arr;
 }
 
-function applyPitchEdits(tr: Transcription, edits: Record<string, number>): Transcription {
-  if (!Object.keys(edits).length) return tr;
+/** The transcription as the user corrected it: their pitches, without the notes they removed. */
+function applyNoteEdits(tr: Transcription, edits: Record<string, number>, deleted: Record<string, true>): Transcription {
+  if (!Object.keys(edits).length && !Object.keys(deleted).length) return tr;
   return {
     ...tr,
-    notes: tr.notes.map((n) => {
-      const m = edits[noteKey(n)];
-      return m === undefined ? n : { ...n, midi: m, edited: true };
-    }),
+    notes: tr.notes
+      .filter((n) => !deleted[noteKey(n)])
+      .map((n) => {
+        const m = edits[noteKey(n)];
+        return m === undefined ? n : { ...n, midi: m, edited: true };
+      }),
   };
 }
 
@@ -299,6 +313,7 @@ export const useStore = create<State>((set, get) => {
     lyrics: noLyrics,
     lyricEdits: {},
     pitchEdits: {},
+    deletedNotes: {},
     harmonyEdits: {},
     chordEdits: [],
     chordRefit: null,
@@ -355,7 +370,7 @@ export const useStore = create<State>((set, get) => {
       rebuild({ harmony: { ...s.harmony, ...v }, variationIndex: i, selection: null });
     },
 
-    setAnalysis: ({ recording, frames, transcription, title }) => {
+    setAnalysis: ({ recording, frames, transcription, title, review }) => {
       rebuild({
         recording,
         voice: null,
@@ -366,11 +381,12 @@ export const useStore = create<State>((set, get) => {
         lyrics: { ...noLyrics, status: get().detectLyrics ? 'listening' : 'off' },
         lyricEdits: {},
         pitchEdits: {},
+        deletedNotes: {},
         harmonyEdits: {},
         chordEdits: [],
         chordRefit: null,
         selection: null,
-        phase: 'ready',
+        phase: review ? 'review' : 'ready',
         title: title ?? get().title,
         timeSig: transcription.timeSig,
       });
@@ -400,7 +416,7 @@ export const useStore = create<State>((set, get) => {
         if (bpm !== undefined) next.tempoSource = 'manual';
       }
       // New tempo, metre or key re-grids the song, so pinned chords no longer line up with it.
-      rebuild({ baseTranscription: next, transcription: applyPitchEdits(next, get().pitchEdits), timeSig: ts, selection: null, chordEdits: [], chordRefit: null });
+      rebuild({ baseTranscription: next, transcription: applyNoteEdits(next, get().pitchEdits, get().deletedNotes), timeSig: ts, selection: null, chordEdits: [], chordRefit: null });
     },
 
     setPartMix: (id, p) => {
@@ -425,7 +441,7 @@ export const useStore = create<State>((set, get) => {
         const n = s.transcription?.notes[index];
         if (!base || !n) return;
         const pitchEdits = { ...s.pitchEdits, [noteKey(n)]: m };
-        rebuild({ pitchEdits, transcription: applyPitchEdits(base, pitchEdits) });
+        rebuild({ pitchEdits, transcription: applyNoteEdits(base, pitchEdits, s.deletedNotes) });
         return;
       }
       const part = s.arrangement?.harmonies.find((p) => p.id === partId);
@@ -468,10 +484,42 @@ export const useStore = create<State>((set, get) => {
 
     resetChords: () => rebuild({ chordEdits: [], chordRefit: null, selection: null }),
 
+    deleteNote: (index) => {
+      const s = get();
+      const base = s.baseTranscription;
+      const n = s.transcription?.notes[index];
+      // a melody needs at least two notes to harmonize
+      if (!base || !n || s.transcription!.notes.length <= 2) return;
+      const deletedNotes = { ...s.deletedNotes, [noteKey(n)]: true as const };
+      rebuild({ deletedNotes, transcription: applyNoteEdits(base, s.pitchEdits, deletedNotes), selection: null });
+    },
+
+    restoreNote: (key) => {
+      const s = get();
+      const base = s.baseTranscription;
+      if (!base || !s.deletedNotes[key]) return;
+      const { [key]: _, ...deletedNotes } = s.deletedNotes;
+      rebuild({ deletedNotes, transcription: applyNoteEdits(base, s.pitchEdits, deletedNotes), selection: null });
+    },
+
+    resetNotes: () => {
+      const base = get().baseTranscription;
+      if (!base) return;
+      rebuild({ pitchEdits: {}, deletedNotes: {}, transcription: base, selection: null });
+    },
+
+    openReview: () => {
+      if (get().transcription) set({ phase: 'review', selection: null, playing: false });
+    },
+
+    finishReview: () => {
+      if (get().phase === 'review') set({ phase: 'ready' });
+    },
+
     resetEdits: () => {
       const base = get().baseTranscription;
       if (!base) return;
-      rebuild({ pitchEdits: {}, lyricEdits: {}, harmonyEdits: {}, transcription: base, selection: null });
+      rebuild({ pitchEdits: {}, deletedNotes: {}, lyricEdits: {}, harmonyEdits: {}, transcription: base, selection: null });
     },
 
     toast: (text, kind = 'info') => {
