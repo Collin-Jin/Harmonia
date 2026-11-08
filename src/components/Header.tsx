@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CircleHelp } from 'lucide-react';
 import { useStore } from '../state/store';
 import { keyName } from '../music/theory';
 import { Logo } from './Logo';
 
-const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+/** The column the visitor last moved in: its section is the one the header marks. */
+let focusColumn: 'side' | 'main' = 'main';
+const columnOf = (el: Element | null) => (el?.closest('.sidebar') ? 'side' : 'main');
+
+const go = (id: string) => {
+  const el = document.getElementById(id);
+  focusColumn = columnOf(el);
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
 
 export function Header({ onHelp }: { onHelp: () => void }) {
   const phase = useStore((s) => s.phase);
@@ -21,9 +29,18 @@ export function Header({ onHelp }: { onHelp: () => void }) {
     { mark: 'E', label: 'Mix', target: 'sec-mix', on: ready },
     { mark: 'F', label: 'Perform live', target: 'sec-live', on: ready },
   ];
-  const inView = useSectionsInView(steps.map((s) => s.target), phase);
+  const inView = useSectionInView(steps.map((s) => s.target), phase);
+  const ref = useRef<HTMLElement>(null);
+  // the pinned side column and jump targets sit below the header at whatever height it wraps to
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--header-h', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <header className="header">
+    <header className="header" ref={ref}>
       <div className="brand">
         <Logo />
         <div>
@@ -54,7 +71,8 @@ export function Header({ onHelp }: { onHelp: () => void }) {
         {steps.map((s) => (
           <button
             key={s.mark}
-            className={`step ${(ready ? inView.has(s.target) : s.mark === (phase === 'review' ? 'B' : 'A')) || (s.mark === 'F' && liveActive) ? 'active' : ''}`}
+            className={`step ${(ready ? inView === s.target : s.mark === (phase === 'review' ? 'B' : 'A')) || (s.mark === 'F' && liveActive) ? 'active' : ''}`}
+            aria-current={ready && inView === s.target ? 'location' : undefined}
             disabled={!s.on}
             onClick={() => go(s.target)}
             title={s.on ? `Go to ${s.mark} · ${s.label}` : 'Record or load a melody first'}
@@ -73,10 +91,10 @@ export function Header({ onHelp }: { onHelp: () => void }) {
 
 /**
  * The section mostly on screen. With the side column pinned on wide screens each column has
- * its own, so this is a set: one section per column.
+ * one; the header marks the one in the column the visitor last scrolled or jumped to.
  */
-function useSectionsInView(ids: string[], phase: string): Set<string> {
-  const [seen, setSeen] = useState<Set<string>>(new Set());
+function useSectionInView(ids: string[], phase: string): string | null {
+  const [seen, setSeen] = useState<string | null>(null);
   const key = ids.join(',');
   useEffect(() => {
     let frame = 0;
@@ -99,20 +117,23 @@ function useSectionsInView(ids: string[], phase: string): Set<string> {
         const column = col && clip ? 'side' : 'main';
         if (!best.has(column) || px > best.get(column)!.px) best.set(column, { id, px });
       }
-      const next = new Set([...best.values()].map((b) => b.id));
-      setSeen((prev) => (prev.size === next.size && [...next].every((x) => prev.has(x)) ? prev : next));
+      setSeen((best.get(focusColumn) ?? best.get('main') ?? best.get('side'))?.id ?? null);
     };
     const schedule = () => {
       if (!frame) frame = requestAnimationFrame(measure);
     };
+    const onScroll = (e: Event) => {
+      focusColumn = e.target instanceof Element ? columnOf(e.target) : 'main';
+      schedule();
+    };
     // scroll events don't bubble, but capturing on window catches the side column's too
-    window.addEventListener('scroll', schedule, true);
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', schedule);
     const mo = new MutationObserver(schedule);
     mo.observe(document.body, { childList: true, subtree: true });
     schedule();
     return () => {
-      window.removeEventListener('scroll', schedule, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', schedule);
       mo.disconnect();
       cancelAnimationFrame(frame);

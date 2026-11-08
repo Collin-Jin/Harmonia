@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Headphones, MicVocal, Square } from 'lucide-react';
+import { ChevronDown, ChevronUp, Headphones, MicVocal, Square } from 'lucide-react';
 import { useStore } from '../state/store';
 import { getLive, refreshLive, startLive, stopLive } from '../state/controller';
 import type { LiveSnapshot } from '../audio/live';
@@ -35,6 +35,7 @@ export function LivePanel() {
   const live = useStore((s) => s.live);
   const set = useStore((s) => s.set);
   const snap = useLiveSnapshot(active);
+  const [options, setOptions] = useState(false);
   const st = snap?.status;
   const bar = arr.timeSig.beats * UNITS_PER_BEAT;
   const firstStart = arr.melody.notes[0]?.start ?? 0;
@@ -56,7 +57,7 @@ export function LivePanel() {
   const needle = 50 + Math.max(-50, Math.min(50, cents));
 
   return (
-    <div className={`panel live-panel ${active ? 'active' : ''}`} data-testid="live-panel" id="sec-live">
+    <div className={`panel live-panel ${active ? 'active' : 'quiet'}`} data-testid="live-panel" id="sec-live">
       <PanelHead
         mark="F"
         title="Sing live"
@@ -88,7 +89,7 @@ export function LivePanel() {
         <div className="notice" style={{ marginTop: 14 }}>
           <Headphones size={16} style={{ flexShrink: 0, marginTop: 1 }} />
           <span>
-            Use headphones for live mode so the harmony voices don’t leak into your microphone. On speakers, enable echo cancellation below.
+            Use headphones for live mode so the harmony voices don’t leak into your microphone. On speakers, turn on echo cancellation under “How the voices follow you”.
           </span>
         </div>
       )}
@@ -182,12 +183,17 @@ export function LivePanel() {
         </div>
       )}
 
-      <div className="live-opts">
-        <Toggle on={live.allowTranspose} onChange={(v) => setLive({ allowTranspose: v })} label="Follow key changes" sub="Sing in any key" />
-        <Toggle on={live.followIntonation} onChange={(v) => setLive({ followIntonation: v })} label="Follow intonation" sub="Voices bend with you" />
-        <Toggle on={live.followDynamics} onChange={(v) => setLive({ followDynamics: v })} label="Follow dynamics" sub="Louder you, louder choir" />
-        <Toggle on={live.echoCancellation} onChange={(v) => setLive({ echoCancellation: v })} label="Echo cancellation" sub="For speakers (adds latency)" />
-      </div>
+      <button className="btn sm ghost live-options-toggle" onClick={() => setOptions(!options)} aria-expanded={options} data-testid="live-options">
+        {options ? <ChevronUp size={14} /> : <ChevronDown size={14} />} How the voices follow you
+      </button>
+      {options && (
+        <div className="live-opts">
+          <Toggle on={live.allowTranspose} onChange={(v) => setLive({ allowTranspose: v })} label="Follow key changes" sub="Sing in any key" />
+          <Toggle on={live.followIntonation} onChange={(v) => setLive({ followIntonation: v })} label="Follow intonation" sub="Voices bend with you" />
+          <Toggle on={live.followDynamics} onChange={(v) => setLive({ followDynamics: v })} label="Follow dynamics" sub="Louder you, louder choir" />
+          <Toggle on={live.echoCancellation} onChange={(v) => setLive({ echoCancellation: v })} label="Echo cancellation" sub="For speakers (adds latency)" />
+        </div>
+      )}
     </div>
   );
 }

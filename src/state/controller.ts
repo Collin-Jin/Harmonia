@@ -106,8 +106,8 @@ async function analyze(samples: Float32Array, sampleRate: number, o: { bpm?: num
       return;
     }
     s.setAnalysis({ recording: { samples, sampleRate }, frames: result.frames, transcription: result.transcription, title: o.title, review: o.review });
-    const n = result.transcription.notes.length;
-    s.toast(o.review ? `Heard ${n} notes — check them, then harmonize.` : `Transcribed ${n} notes — harmonies ready.`, 'success');
+    // straight to the arrangement, the player points out the play button (and announces it) instead
+    if (o.review) s.toast(`Heard ${result.transcription.notes.length} notes — check them, then harmonize.`, 'success');
     void detectLyrics();
   } catch (e) {
     s.toast(`Analysis failed: ${(e as Error).message}`, 'error');

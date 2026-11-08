@@ -1,5 +1,5 @@
-import { AudioLines, ChevronLeft, ChevronRight, Church, Dices, Mic2, Music4, Sparkles, Users, Waves } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Church, Dices, Music4, Sparkles, Users, Waves } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { useStore } from '../state/store';
 import { STYLE_INFO } from '../music/harmony';
 import { SOUND_LABEL, type HarmonySound, type HarmonyStyle } from '../music/types';
@@ -23,15 +23,36 @@ const SOUNDS: { v: HarmonySound; sub: string }[] = [
   { v: 'mm', sub: 'hummed' },
 ];
 
-/** A titled group of controls inside a panel. */
-function Group({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+/**
+ * A titled group of controls inside a panel. With a `summary` it folds to that one line until
+ * opened, so the side column fits without scrolling.
+ */
+function Group({ title, action, summary, testId, children }: { title: string; action?: ReactNode; summary?: ReactNode; testId?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const folds = summary !== undefined;
   return (
     <section className="group">
       <div className="group-head">
         <h3>{title}</h3>
-        {action}
+        <span className="group-actions">
+          {action}
+          {folds && open && (
+            <button className="btn sm ghost" onClick={() => setOpen(false)} aria-expanded data-testid={testId && `${testId}-done`}>
+              <ChevronUp size={14} /> Done
+            </button>
+          )}
+        </span>
       </div>
-      {children}
+      {folds && !open ? (
+        <button className="fold-summary" onClick={() => setOpen(true)} aria-expanded={false} data-testid={testId}>
+          <span className="what">{summary}</span>
+          <span className="change">
+            Change <ChevronDown size={14} />
+          </span>
+        </button>
+      ) : (
+        children
+      )}
     </section>
   );
 }
@@ -45,15 +66,12 @@ export function HarmonyPanel() {
   const variationIndex = useStore((s) => s.variationIndex);
   const sound = useStore((s) => s.harmonySound);
   const setHarmonySound = useStore((s) => s.setHarmonySound);
-  const source = useStore((s) => s.harmonySource);
-  const hasRecording = useStore((s) => !!s.recording);
   const lyrics = useStore((s) => s.lyrics);
-  const set = useStore((s) => s.set);
+  const chords = useStore((s) => s.arrangement?.chords ?? []);
   const info = STYLE_INFO[h.style];
   const wordless = lyrics.hummed || lyrics.status === 'none' || lyrics.status === 'off';
   let soundHint = '';
   if (sound === 'lyrics' && wordless) soundHint = lyrics.hummed ? 'you hummed, so they hum along' : 'no words found, so they sing like you';
-  else if (sound === 'lyrics' && source === 'choir') soundHint = 'the synth sings the words on a vowel';
 
   return (
     <div className="panel" data-testid="harmony-panel" id="sec-harmony">
@@ -151,6 +169,13 @@ export function HarmonyPanel() {
 
       <Group
         title="Chords"
+        testId="chords-fold"
+        summary={
+          <>
+            <span className="chord-line">{chords.map((c) => c.symbol).join('  ')}</span>
+            <small>{h.complexity < 0.34 ? 'plain triads' : h.complexity < 0.67 ? 'with sevenths' : 'rich & chromatic'}</small>
+          </>
+        }
         action={
           <button className="btn sm" onClick={() => newVariation('chords')} data-testid="variation-chords" title="Choose a different chord progression (your own chord choices stay)">
             <Dices size={13} /> New chords
@@ -163,22 +188,6 @@ export function HarmonyPanel() {
             <span className="hint">click a chord to change it</span>
           </div>
           <ChordEditor />
-        </div>
-        <div className="field">
-          <div className="label">
-            <span>Chord changes</span>
-            <span className="hint">how often the harmony moves</span>
-          </div>
-          <Seg
-            value={h.harmonicRhythm}
-            options={[
-              { value: 'auto', label: 'Auto' },
-              { value: 'bar', label: 'Per bar' },
-              { value: 'half', label: 'Half bar' },
-              { value: 'beat', label: 'Per beat' },
-            ]}
-            onChange={(v) => setHarmony({ harmonicRhythm: v })}
-          />
         </div>
         <div className="field">
           <div className="label">
@@ -202,21 +211,16 @@ export function HarmonyPanel() {
         </div>
       </Group>
 
-      <Group title="Sound">
-        <div className="field">
-          <div className="label">
-            <span>Who sings them</span>
-            {!hasRecording && <span className="hint">needs a recording</span>}
-          </div>
-          <Seg
-            value={source}
-            options={[
-              { value: 'voice', label: <><Mic2 size={13} /> Your voice</>, disabled: !hasRecording, title: 'Your own recording, re-pitched onto every harmony line' },
-              { value: 'choir', label: <><AudioLines size={13} /> Choir synth</>, title: 'The built-in vocal synthesizer' },
-            ]}
-            onChange={(v) => set({ harmonySource: v })}
-          />
-        </div>
+      <Group
+        title="Sound"
+        testId="sound-fold"
+        summary={
+          <>
+            <span>{sound === 'lyrics' ? 'Lyrics' : SOUND_LABEL[sound]}</span>
+            <small>{soundHint || SOUNDS.find((o) => o.v === sound)?.sub}</small>
+          </>
+        }
+      >
         <div className="field">
           <div className="label">
             <span>What they sing</span>

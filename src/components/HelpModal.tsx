@@ -59,11 +59,8 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           </h4>
           <ul>
             <li><b>Style</b> and <b>harmony parts</b> set the character and size of your choir. <b>New voicing</b> writes fresh lines over the same chords and <b>New chords</b> a fresh progression; the arrows step back through what you tried.</li>
-            <li><b>Click a chord</b> to swap it for another that fits the melody there. Only that chord changes; <b>Re-fit the rest</b> re-chooses the others around your picks.</li>
-            <li>
-              <b>Who sings them</b>: <i>Your voice</i> re-pitches your own recording onto each harmony line. <i>Choir synth</i> uses a built-in
-              vocal sound.
-            </li>
+            <li>Open <b>Chords</b>, then <b>click a chord</b> to swap it for another that fits the melody there. Only that chord changes; <b>Re-fit the rest</b> re-chooses the others around your picks.</li>
+            <li>The harmony parts are your own recording, re-pitched onto each line.</li>
             <li>
               <b>What they sing</b>: the same lyrics as you, or one sound such as “Ooh” or “Mmm”. You can give a single part its own sound in the
               mix (E).
@@ -97,7 +94,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           </h4>
           <p>
             The player at the bottom plays the arrangement. Click its progress bar to jump to any bar, and use <b>Melody</b> to hear your voice, the
-            synth, or harmony only so you can sing along. In the mix, <b>M</b> mutes a part and <b>S</b> solos it.
+            synth, or harmony only so you can sing along. Open the mix with <b>Adjust</b>: <b>M</b> mutes a part and <b>S</b> solos it.
           </p>
         </section>
 
@@ -107,7 +104,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           </h4>
           <ul>
             <li>
-              <b>Wear headphones</b>, otherwise the harmony leaks into the microphone. On speakers, turn on <i>Echo cancellation</i>.
+              <b>Wear headphones</b>, otherwise the harmony leaks into the microphone. On speakers, turn on <i>Echo cancellation</i> under <i>How the voices follow you</i>.
             </li>
             <li>
               Press <b>Sing live</b> and sing the melody again, from the top or anywhere. The voices follow your place, tempo, key and tuning. If you

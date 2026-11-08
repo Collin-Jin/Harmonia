@@ -5,6 +5,9 @@ import { currentPosition, play, stopPlayback } from '../state/controller';
 import { UNITS_PER_BEAT } from '../music/types';
 import { Seg } from './ui';
 
+/** The take whose harmony has been heard at least once; until then the play button is pointed out. */
+let heardTake: unknown = null;
+
 export function Dock() {
   const playing = useStore((s) => s.playing);
   const liveActive = useStore((s) => s.liveActive);
@@ -13,6 +16,9 @@ export function Dock() {
   const hasRecording = useStore((s) => !!s.recording);
   const set = useStore((s) => s.set);
   const partsBusy = useStore((s) => s.voicePartsBusy && s.harmonySource === 'voice');
+  const recording = useStore((s) => s.recording);
+  if (playing) heardTake = recording;
+  const cue = !playing && !liveActive && heardTake !== recording;
   const [pos, setPos] = useState<number | null>(null);
 
   useEffect(() => {
@@ -45,7 +51,7 @@ export function Dock() {
   return (
     <div className="dock" data-testid="dock">
       <button
-        className={`play-btn ${playing ? 'on' : ''}`}
+        className={`play-btn ${playing ? 'on' : ''} ${cue ? 'cue' : ''}`}
         onClick={() => (playing ? stopPlayback() : play(0))}
         aria-label={playing ? 'Stop' : 'Play arrangement'}
         title={playing ? 'Stop' : 'Play from the beginning'}
@@ -53,16 +59,23 @@ export function Dock() {
       >
         {playing ? <Square size={16} fill="currentColor" /> : <Play size={19} fill="currentColor" style={{ marginLeft: 2 }} />}
       </button>
-      <div className="time" aria-live="off">
-        <span className="counter">
-          {String(curBar).padStart(2, '0')}
-          <i>:</i>
-          {curBeat}
-        </span>
-        <small>
-          bar {curBar} of {totalBars} · {Math.round(arr.bpm)} bpm
-        </small>
-      </div>
+      {cue ? (
+        <div className="dock-cue" role="status" data-testid="play-cue">
+          Your harmony is ready.
+          <small>Press play to hear it</small>
+        </div>
+      ) : (
+        <div className="time" aria-live="off">
+          <span className="counter">
+            {String(curBar).padStart(2, '0')}
+            <i>:</i>
+            {curBeat}
+          </span>
+          <small>
+            bar {curBar} of {totalBars} · {Math.round(arr.bpm)} bpm
+          </small>
+        </div>
+      )}
       <div className="progress" onClick={seek} title="Click to play from here" role="slider" aria-label="Position" aria-valuemin={1} aria-valuemax={totalBars} aria-valuenow={curBar}>
         {Array.from({ length: totalBars - 1 }, (_, i) => (
           <span key={i} className="tick" style={{ left: `${(((i + 1) * bar) / arr.totalUnits) * 100}%` }} />
