@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { Mic2, Music2, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronUp, Mic2, Music2, Upload } from 'lucide-react';
 import { useStore } from '../state/store';
 import { importAudioFile, loadSample, startRecording, stopRecording } from '../state/controller';
 import { SAMPLES } from '../music/samples';
@@ -12,14 +12,48 @@ export function CapturePanel() {
   const timeSig = useStore((s) => s.timeSig);
   const detectLyrics = useStore((s) => s.detectLyrics);
   const hasTake = useStore((s) => !!s.transcription);
+  const title = useStore((s) => s.title);
+  const notes = useStore((s) => s.transcription?.notes.length ?? 0);
   const set = useStore((s) => s.set);
   const fileRef = useRef<HTMLInputElement>(null);
   const recording = phase === 'recording';
   const busy = phase === 'analyzing';
+  // Once a take is in, recording options step aside so the arrangement is within reach.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (phase === 'ready') setOpen(false);
+  }, [phase, title]);
+
+  if (phase === 'ready' && hasTake && !open)
+    return (
+      <div className="panel compact" id="sec-capture" data-testid="capture-compact">
+        <PanelHead mark="A" title="Sing" sub={<>your take · <b>{title}</b> · {notes} notes</>} />
+        <div className="compact-actions">
+          <button className="btn sm primary" onClick={() => startRecording()} data-testid="record-again">
+            <span className="rec-dot" aria-hidden /> Record new take
+          </button>
+          <button className="btn sm ghost" onClick={() => setOpen(true)} data-testid="capture-expand">
+            Load another…
+          </button>
+        </div>
+      </div>
+    );
 
   return (
     <div className="panel" id="sec-capture">
-      <PanelHead mark="A" title="Sing" sub="record, hum, or bring a melody" />
+      <PanelHead
+        mark="A"
+        title="Sing"
+        sub="record, hum, or bring a melody"
+        right={
+          phase === 'ready' &&
+          hasTake && (
+            <button className="btn sm ghost icon" onClick={() => setOpen(false)} aria-label="Fold up" title="Fold up">
+              <ChevronUp size={14} />
+            </button>
+          )
+        }
+      />
       <div className="rec-hero">
         <button
           className={`rec-button ${recording ? 'recording' : ''}`}

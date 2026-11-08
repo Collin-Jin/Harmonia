@@ -43,6 +43,9 @@ test('record from microphone → transcribe → harmonize → play → export MI
   expect(tr.notes).toEqual(expected);
   expect(Math.abs(tr.bpm - 100)).toBeLessThan(5);
   expect(tr.key).toMatchObject({ tonic: 0, mode: 'major' });
+  // a confident reading folds "What I heard" to a summary; Fix opens it for corrections
+  await expect(page.getByTestId('analysis-summary')).toContainText('C major');
+  await page.getByTestId('analysis-toggle').click();
   await expect(page.getByTestId('key-select')).toHaveValue('0');
   await expect(page.getByTestId('chords').locator('.chord').first()).toBeVisible();
 

@@ -80,6 +80,7 @@ export interface Chord {
   symbol: string;
   roman: string;
   fn: 'T' | 'S' | 'D' | 'X';
+  edited?: boolean; // chosen by the user
 }
 
 export type HarmonyStyle = 'pop' | 'choral' | 'jazz' | 'barbershop' | 'pad';
@@ -106,7 +107,10 @@ export interface HarmonyOptions {
   placement: Placement;
   harmonicRhythm: HarmonicRhythm;
   complexity: number; // 0..1
+  /** Varies the voicing ("New voicing"); also the chords when `chordSeed` is not given. */
   seed: number;
+  /** Varies the chord progression ("New chords"). */
+  chordSeed?: number;
 }
 
 export type ClefKind = 'treble' | 'treble8' | 'bass';

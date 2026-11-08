@@ -56,7 +56,8 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
             <span className="mark">C</span> Arrange
           </h4>
           <ul>
-            <li><b>Style</b> and <b>harmony parts</b> set the character and size of your choir. <b>Try another</b> writes a fresh arrangement.</li>
+            <li><b>Style</b> and <b>harmony parts</b> set the character and size of your choir. <b>New voicing</b> writes fresh lines over the same chords and <b>New chords</b> a fresh progression; the arrows step back through what you tried.</li>
+            <li><b>Click a chord</b> to swap it for another that fits the melody there. Only that chord changes; <b>Re-fit the rest</b> re-chooses the others around your picks.</li>
             <li>
               <b>Who sings them</b>: <i>Your voice</i> re-pitches your own recording onto each harmony line. <i>Choir synth</i> uses a built-in
               vocal sound.

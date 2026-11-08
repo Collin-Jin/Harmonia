@@ -99,6 +99,15 @@ describe('harmony generation', () => {
     }
   }
 
+  it('pop has no bass: high, then low, then top, at most three parts', () => {
+    const names = (v: number) => harmonize(input, { ...base, voices: v }).harmonies.map((h) => `${h.id}:${h.name}`).sort();
+    expect(names(1)).toEqual(['h1:High Harmony']);
+    expect(names(2)).toEqual(['h1:High Harmony', 'h2:Low Harmony']);
+    expect(names(3)).toEqual(['h1:High Harmony', 'h2:Low Harmony', 'h3:Top Harmony']);
+    expect(names(4)).toEqual(names(3));
+    expect(STYLE_INFO.pop).toMatchObject({ maxVoices: 3, placement: false });
+  });
+
   it('pop harmonies sing the written chord wherever the melody does', () => {
     for (const seed of [0, 1])
       for (const placement of ['around', 'above', 'below'] as const) {
