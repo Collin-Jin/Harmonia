@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useStore } from '../state/store';
 import { STYLE_INFO } from '../music/harmony';
 import { SOUND_LABEL, type HarmonySound, type HarmonyStyle } from '../music/types';
+import { ChordEditor } from './ChordEditor';
 import { PanelHead, Seg } from './ui';
 
 const ICONS: Record<HarmonyStyle, ReactNode> = {
@@ -24,7 +25,6 @@ const SOUNDS: { v: HarmonySound; sub: string }[] = [
 
 export function HarmonyPanel() {
   const h = useStore((s) => s.harmony);
-  const chords = useStore((s) => s.arrangement?.chords ?? []);
   const setHarmony = useStore((s) => s.setHarmony);
   const sound = useStore((s) => s.harmonySound);
   const setHarmonySound = useStore((s) => s.setHarmonySound);
@@ -184,16 +184,9 @@ export function HarmonyPanel() {
       <div className="field">
         <div className="label">
           <span>Chord progression</span>
-          <span className="hint">hover a chord for its function</span>
+          <span className="hint">click a chord to change it</span>
         </div>
-        <div className="chords" data-testid="chords">
-          {chords.map((c, i) => (
-            <div key={i} className={`chord fn-${c.fn}`} title={`${c.roman} · ${c.dur / 4} beat${c.dur === 4 ? '' : 's'}`}>
-              <b>{c.symbol}</b>
-              <span>{c.roman}</span>
-            </div>
-          ))}
-        </div>
+        <ChordEditor />
       </div>
     </div>
   );

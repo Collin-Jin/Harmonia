@@ -1,4 +1,4 @@
-import { chordAt, chordPcs, detectChords, QUALITY_INTERVALS } from './chords';
+import { applyChordEdits, chordAt, chordPcs, detectChords, QUALITY_INTERVALS } from './chords';
 import { diatonicStep, mod12, scaleOf, type Key } from './theory';
 import { findCadences } from './phrases';
 import {
@@ -464,13 +464,17 @@ export interface HarmonizeInput {
   totalUnits: number;
   /** Melody note indices that end a lyric line. */
   phraseHints?: number[];
+  /** Chords the user picked, each pinned to its own span; the rest of the progression is left alone. */
+  chordEdits?: Chord[];
+  /** Pinned chords the rest of the progression was re-fitted around ("Re-fit the rest"). */
+  refitLocks?: Chord[];
 }
 
 export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangement {
   const { melody, key, timeSig } = input;
   const style = opts.style;
   const nVoices = Math.max(1, Math.min(opts.voices, STYLE_INFO[style].maxVoices));
-  const chords = melody.length
+  const base = melody.length
     ? detectChords(melody, {
         key,
         timeSig,
@@ -480,8 +484,11 @@ export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangem
         totalUnits: input.totalUnits,
         seed: opts.seed,
         phraseHints: input.phraseHints,
+        locks: input.refitLocks,
       })
     : [];
+  const edits = melody.length ? (input.chordEdits ?? []) : [];
+  const chords = edits.length ? applyChordEdits(base, edits.map((e) => ({ ...e, edited: true }))) : base;
   const melPitches = melody.map((n) => n.midi).sort((a, b) => a - b);
   const melMed = melPitches.length ? melPitches[melPitches.length >> 1] : 60;
   const slots = slotsFor(style, nVoices, opts.placement, opts.seed);
@@ -497,57 +504,78 @@ export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangem
     seed: opts.seed,
     leadingTone: mod12(key.tonic + 11),
   };
-  const events = melody.length ? buildEvents(melody, chords, style, timeSig) : [];
-  if (events.length) {
-    events[0].first = true;
-    events[events.length - 1].final = true;
-    for (const cad of findCadences(melody, timeSig, input.phraseHints)) {
-      const ev = events.find((e) => e.start <= cad.unit && e.start + e.dur > cad.unit);
-      if (ev) ev.cadence = true;
-    }
-  }
+  const cadences = findCadences(melody, timeSig, input.phraseHints);
 
-  // Beam search over voicings.
-  interface State {
-    combo: number[];
-    cost: number;
-    parent: State | null;
-    runs: number[];
-  }
-  const BEAM = 40;
-  let beam: State[] = [];
-  const noiseAmp = opts.seed ? 0.35 : 0;
-  events.forEach((ev, ei) => {
-    const combos = enumerateCombos(ctx, ev).map((c) => ({
-      ...c,
-      stat: staticCost(ctx, ev, c.combo) + c.penalty + (noiseAmp ? noiseAmp * hashNoise(opts.seed, ei, c.combo.reduce((s, m) => s * 131 + m, 7)) : 0),
-      key: c.combo.join(','),
-    }));
-    const next = new Map<string, State>();
-    if (ei === 0) {
-      for (const c of combos) next.set(c.key, { combo: c.combo, cost: c.stat, parent: null, runs: c.combo.map(() => 0) });
-    } else {
-      const prevEv = events[ei - 1];
-      for (const s of beam) {
-        const sKey = s.combo.join(',');
-        for (const c of combos) {
-          const runs = parallelRuns(prevEv, ev, s.combo, c.combo, s.runs);
-          let total = s.cost + c.stat + transitionCost(ctx, prevEv, ev, s.combo, c.combo, s.parent?.combo ?? null);
-          if (style !== 'pad') for (const r of runs) if (r > 3) total += 0.8 * (r - 3);
-          if (ev.holdable && c.key === sKey) total -= 1.0;
-          const ex = next.get(c.key);
-          if (!ex || total < ex.cost) next.set(c.key, { combo: c.combo, cost: total, parent: s, runs });
-        }
+  /**
+   * Beam search over voicings. With `keep`, events away from the edited chords reuse the
+   * voicing of `keep.base`: changing one chord re-voices only that chord and the notes either
+   * side of it, so the rest of the arrangement stays exactly as it was.
+   */
+  const voiceLead = (progression: Chord[], keep?: { spans: Chord[]; base: { events: Event[]; path: number[][] } }) => {
+    const events = melody.length ? buildEvents(melody, progression, style, timeSig) : [];
+    if (events.length) {
+      events[0].first = true;
+      events[events.length - 1].final = true;
+      for (const cad of cadences) {
+        const ev = events.find((e) => e.start <= cad.unit && e.start + e.dur > cad.unit);
+        if (ev) ev.cadence = true;
       }
     }
-    beam = [...next.values()].sort((a, b) => a.cost - b.cost).slice(0, BEAM);
-  });
-  const path: number[][] = new Array(events.length);
-  let st: State | null = beam[0] ?? null;
-  for (let i = events.length - 1; i >= 0 && st; i--) {
-    path[i] = st.combo;
-    st = st.parent;
-  }
+    const free = new Set<number>();
+    if (keep)
+      events.forEach((ev, i) => {
+        if (keep.spans.some((c) => ev.start < c.start + c.dur && ev.start + ev.dur > c.start)) [i - 1, i, i + 1].forEach((j) => free.add(j));
+      });
+    const kept = (ev: Event, i: number): number[] | null => {
+      if (!keep || free.has(i)) return null;
+      const bi = keep.base.events.findIndex((b) => b.start <= ev.start && b.start + b.dur > ev.start);
+      return keep.base.path[bi] ?? null;
+    };
+
+    interface State {
+      combo: number[];
+      cost: number;
+      parent: State | null;
+      runs: number[];
+    }
+    const BEAM = 40;
+    let beam: State[] = [];
+    const noiseAmp = opts.seed ? 0.35 : 0;
+    events.forEach((ev, ei) => {
+      const fixed = kept(ev, ei);
+      const combos = (fixed ? [{ combo: fixed, penalty: 0 }] : enumerateCombos(ctx, ev)).map((c) => ({
+        ...c,
+        stat: staticCost(ctx, ev, c.combo) + c.penalty + (noiseAmp ? noiseAmp * hashNoise(opts.seed, ei, c.combo.reduce((s, m) => s * 131 + m, 7)) : 0),
+        key: c.combo.join(','),
+      }));
+      const next = new Map<string, State>();
+      if (ei === 0) {
+        for (const c of combos) next.set(c.key, { combo: c.combo, cost: c.stat, parent: null, runs: c.combo.map(() => 0) });
+      } else {
+        const prevEv = events[ei - 1];
+        for (const s of beam) {
+          const sKey = s.combo.join(',');
+          for (const c of combos) {
+            const runs = parallelRuns(prevEv, ev, s.combo, c.combo, s.runs);
+            let total = s.cost + c.stat + transitionCost(ctx, prevEv, ev, s.combo, c.combo, s.parent?.combo ?? null);
+            if (style !== 'pad') for (const r of runs) if (r > 3) total += 0.8 * (r - 3);
+            if (ev.holdable && c.key === sKey) total -= 1.0;
+            const ex = next.get(c.key);
+            if (!ex || total < ex.cost) next.set(c.key, { combo: c.combo, cost: total, parent: s, runs });
+          }
+        }
+      }
+      beam = [...next.values()].sort((a, b) => a.cost - b.cost).slice(0, BEAM);
+    });
+    const path: number[][] = new Array(events.length);
+    let st: State | null = beam[0] ?? null;
+    for (let i = events.length - 1; i >= 0 && st; i--) {
+      path[i] = st.combo;
+      st = st.parent;
+    }
+    return { events, path };
+  };
+  const { events, path } = edits.length ? voiceLead(chords, { spans: edits, base: voiceLead(base) }) : voiceLead(chords);
 
   // Build voice parts.
   const vowels: Vowel[] = style === 'pad' ? ['oo', 'oo', 'oo', 'oo'] : style === 'jazz' ? ['oo', 'oo', 'oo', 'oo'] : ['ah', 'ah', 'ah', 'ah'];

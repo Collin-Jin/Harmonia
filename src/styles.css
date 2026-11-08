@@ -993,7 +993,33 @@ input[type='range']:disabled {
   background: var(--white);
   border-radius: 2px 6px 6px 2px;
   box-shadow: inset 0 0 0 1px var(--rule-2);
-  cursor: default;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.chord:hover:not(.on) {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px var(--ink), 0 2px 0 var(--ink);
+}
+.chord.on {
+  box-shadow: inset 0 0 0 1.5px var(--ink), 2px 2px 0 var(--ink);
+}
+/* a chord the user chose: a small pin in the corner */
+.chord.edited::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--verm);
 }
 .chord b {
   display: block;
@@ -1009,17 +1035,142 @@ input[type='range']:disabled {
   font-size: 10.5px;
   color: var(--faint);
 }
-.chord.fn-T {
+.chord.fn-T,
+.chord-option.fn-T {
   --fn: var(--teal);
 }
-.chord.fn-S {
+.chord.fn-S,
+.chord-option.fn-S {
   --fn: var(--ochre);
 }
-.chord.fn-D {
+.chord.fn-D,
+.chord-option.fn-D {
   --fn: var(--verm);
 }
-.chord.fn-X {
+.chord.fn-X,
+.chord-option.fn-X {
   --fn: var(--plum);
+}
+
+
+.chord-editor {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  background: var(--white);
+  box-shadow: var(--print-sm);
+}
+.chord-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.chord-editor-head b {
+  font-family: var(--display);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink);
+}
+.chord-editor-head em {
+  margin-left: 4px;
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--verm);
+}
+.chord-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+.chord-option {
+  --fn: var(--faint);
+  position: relative;
+  padding: 5px 8px 10px;
+  border: 0;
+  border-left: 3px solid var(--fn);
+  border-radius: 2px 6px 6px 2px;
+  background: var(--sheet);
+  box-shadow: inset 0 0 0 1px var(--rule-2);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.chord-option:hover:not(.now) {
+  transform: translateY(-1px);
+  box-shadow: inset 0 0 0 1px var(--ink), 0 2px 0 var(--ink);
+}
+.chord-option.now {
+  background: var(--white);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+  cursor: default;
+}
+.chord-option b {
+  display: block;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.15;
+}
+.chord-option span {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.chord-option small {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--faint);
+}
+.chord-option.now small {
+  color: var(--ink);
+}
+/* how well the chord fits the melody here, relative to the other choices */
+.chord-option .fit {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 4px;
+  height: 2px;
+  background: var(--rule-2);
+}
+.chord-option .fit::before {
+  content: '';
+  display: block;
+  width: var(--fit);
+  height: 100%;
+  background: var(--fn);
+}
+.chord-editor-foot {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.chord-editor-foot:empty {
+  display: none;
+}
+.chord-edits-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.chord-edits-bar span {
+  flex: 1 0 100%;
 }
 
 /* ==========================================================================

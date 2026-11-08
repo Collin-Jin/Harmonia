@@ -80,6 +80,7 @@ export interface Chord {
   symbol: string;
   roman: string;
   fn: 'T' | 'S' | 'D' | 'X';
+  edited?: boolean; // chosen by the user
 }
 
 export type HarmonyStyle = 'pop' | 'choral' | 'jazz' | 'barbershop' | 'pad';

@@ -184,6 +184,43 @@ function segmentLength(hr: HarmonicRhythm, ts: TimeSignature): number {
   }
 }
 
+/**
+ * How well a chord fits the melody between units a and b: chord tones on strong beats and long
+ * notes score, passing and neighbour tones are expected, accented clashes cost.
+ */
+function melodyFit(melody: ScoreNote[], a: number, b: number, pcs: number[], bar: number, colourful: boolean): number {
+  let score = 0;
+  let total = 0;
+  for (let k = 0; k < melody.length; k++) {
+    const n = melody[k];
+    const ov = Math.min(b, n.start + n.dur) - Math.max(a, n.start);
+    if (ov <= 0) continue;
+    const startsHere = n.start >= a;
+    const posInBar = ((n.start % bar) + bar) % bar;
+    let metric = 0.8;
+    if (startsHere) metric = posInBar === 0 ? 1.6 : posInBar % UNITS_PER_BEAT === 0 ? 1.15 : 0.7;
+    else metric = 1.3; // sustained across the chord change: very audible
+    const w = Math.sqrt(ov) * metric;
+    total += w;
+    const idx = pcs.indexOf(mod12(n.midi));
+    if (idx === 0) score += 1.08 * w;
+    else if (idx === 1) score += 1.05 * w;
+    else if (idx === 2) score += 1.0 * w;
+    else if (idx >= 3) score += (idx === 4 ? 0.5 : colourful ? 0.85 : 0.55) * w;
+    else {
+      const p = melody[k - 1];
+      const q = melody[k + 1];
+      const stepTo = (x?: ScoreNote) => !!x && x.midi !== n.midi && Math.abs(x.midi - n.midi) <= 2;
+      // Passing / neighbour tones off the beat are expected, not clashes.
+      const passing = posInBar !== 0 && n.dur <= UNITS_PER_BEAT && stepTo(p) && stepTo(q);
+      // Appoggiatura: an accented dissonance resolving by step onto a chord tone.
+      const appog = metric > 1 && stepTo(q) && q!.start < b && pcs.includes(mod12(q!.midi)) && n.dur <= UNITS_PER_BEAT * 2;
+      score -= (passing ? 0.15 : appog ? 0.45 : metric > 1 ? 1.4 : 0.6) * w;
+    }
+  }
+  return total > 0 ? (3.2 * score) / total : 0;
+}
+
 export interface ChordDetectOptions {
   key: Key;
   timeSig: TimeSignature;
@@ -194,6 +231,8 @@ export interface ChordDetectOptions {
   seed?: number;
   /** Melody note indices that end a lyric line (phrase). */
   phraseHints?: number[];
+  /** Chords the user pinned: segments they cover keep them, and the rest is chosen to fit around them. */
+  locks?: Chord[];
 }
 
 /**
@@ -210,6 +249,8 @@ export function detectChords(melody: ScoreNote[], o: ChordDetectOptions): Chord[
   const bar = o.timeSig.beats * UNITS_PER_BEAT;
   const nSeg = Math.max(1, Math.ceil(o.totalUnits / seg));
   const vocab = vocabulary(o.key, o.style, o.complexity);
+  const locks = o.locks ?? [];
+  const lockIdx = locks.map((c) => candidateIndex(vocab, o.key, c));
   const colourful = o.style === 'jazz' || o.style === 'barbershop';
   const plain = o.style === 'choral';
   const seed = o.seed ?? 0;
@@ -243,41 +284,8 @@ export function detectChords(melody: ScoreNote[], o: ChordDetectOptions): Chord[
     preCad.add(s - 1);
   });
 
-  const emission = (s: number, c: Candidate) => {
-    const a = s * seg;
-    const b = a + seg;
-    const pcs = chordPcs({ root: mod12(o.key.tonic + c.rel), quality: c.quality });
-    let score = 0;
-    let total = 0;
-    for (let k = 0; k < melody.length; k++) {
-      const n = melody[k];
-      const ov = Math.min(b, n.start + n.dur) - Math.max(a, n.start);
-      if (ov <= 0) continue;
-      const startsHere = n.start >= a;
-      const posInBar = ((n.start % bar) + bar) % bar;
-      let metric = 0.8;
-      if (startsHere) metric = posInBar === 0 ? 1.6 : posInBar % UNITS_PER_BEAT === 0 ? 1.15 : 0.7;
-      else metric = 1.3; // sustained across the chord change: very audible
-      const w = Math.sqrt(ov) * metric;
-      total += w;
-      const idx = pcs.indexOf(mod12(n.midi));
-      if (idx === 0) score += 1.08 * w;
-      else if (idx === 1) score += 1.05 * w;
-      else if (idx === 2) score += 1.0 * w;
-      else if (idx >= 3) score += (idx === 4 ? 0.5 : colourful ? 0.85 : 0.55) * w;
-      else {
-        const p = melody[k - 1];
-        const q = melody[k + 1];
-        const stepTo = (x?: ScoreNote) => !!x && x.midi !== n.midi && Math.abs(x.midi - n.midi) <= 2;
-        // Passing / neighbour tones off the beat are expected, not clashes.
-        const passing = posInBar !== 0 && n.dur <= UNITS_PER_BEAT && stepTo(p) && stepTo(q);
-        // Appoggiatura: an accented dissonance resolving by step onto a chord tone.
-        const appog = metric > 1 && stepTo(q) && q!.start < b && pcs.includes(mod12(q!.midi)) && n.dur <= UNITS_PER_BEAT * 2;
-        score -= (passing ? 0.15 : appog ? 0.45 : metric > 1 ? 1.4 : 0.6) * w;
-      }
-    }
-    return total > 0 ? (3.2 * score) / total : 0;
-  };
+  const emission = (s: number, c: Candidate) =>
+    melodyFit(melody, s * seg, (s + 1) * seg, chordPcs({ root: mod12(o.key.tonic + c.rel), quality: c.quality }), bar, colourful);
 
   const N = vocab.length;
   const firstStart = melody.length ? Math.max(0, melody[0].start) : 0;
@@ -307,6 +315,10 @@ export function detectChords(melody: ScoreNote[], o: ChordDetectOptions): Chord[
         }
         row[j] = v;
       }
+      // A pinned chord owns every segment whose middle it covers.
+      const mid = (s + 0.5) * seg;
+      const li = locks.findIndex((c) => c.start <= mid && c.start + c.dur > mid);
+      if (li >= 0) for (let j = 0; j < N; j++) if (j !== lockIdx[li]) row[j] = -Infinity;
     }
     local.push(row);
   }
@@ -422,7 +434,73 @@ export function detectChords(melody: ScoreNote[], o: ChordDetectOptions): Chord[
   });
   const lastC = chords[chords.length - 1];
   lastC.dur = Math.max(1, o.totalUnits - lastC.start);
-  return chords;
+  return locks.length ? applyChordEdits(chords, locks) : chords;
+}
+
+/** Index of a chord in the vocabulary, adding it (as a borrowed colour) when the style doesn't offer it. */
+function candidateIndex(vocab: Candidate[], key: Key, c: Chord): number {
+  const rel = mod12(c.root - key.tonic);
+  const i = vocab.findIndex((v) => v.rel === rel && v.quality === c.quality);
+  if (i >= 0) return i;
+  vocab.push({ rel, quality: c.quality, roman: c.roman, fn: c.fn, prior: -1, kind: 'borrowed' });
+  return vocab.length - 1;
+}
+
+/**
+ * Lay the user's chords over a progression: each edit owns exactly its span, chords it
+ * overlaps are trimmed around it, and everything else is left as it was.
+ */
+export function applyChordEdits(base: Chord[], edits: Chord[]): Chord[] {
+  const out: Chord[] = [];
+  for (const c of base) {
+    let pieces = [{ start: c.start, end: c.start + c.dur }];
+    for (const e of edits) {
+      const es = e.start;
+      const ee = e.start + e.dur;
+      pieces = pieces.flatMap((p) =>
+        ee <= p.start || es >= p.end
+          ? [p]
+          : [
+              ...(es > p.start ? [{ start: p.start, end: es }] : []),
+              ...(ee < p.end ? [{ start: ee, end: p.end }] : []),
+            ],
+      );
+    }
+    for (const p of pieces) out.push({ ...c, start: p.start, dur: p.end - p.start });
+  }
+  for (const e of edits) out.push({ ...e });
+  out.sort((a, b) => a.start - b.start);
+  return out;
+}
+
+export interface ChordSuggestion {
+  chord: Chord;
+  /** Higher fits better: melody fit over the span plus how naturally it follows and leads on. */
+  score: number;
+}
+
+/**
+ * Every chord the style offers for one span, ranked by how well it fits the melody there
+ * and connects to the chords either side.
+ */
+export function suggestChords(melody: ScoreNote[], o: ChordDetectOptions, span: { start: number; dur: number }, prev?: Chord, next?: Chord): ChordSuggestion[] {
+  const bar = o.timeSig.beats * UNITS_PER_BEAT;
+  const vocab = vocabulary(o.key, o.style, o.complexity);
+  const colourful = o.style === 'jazz' || o.style === 'barbershop';
+  const find = (c?: Chord) => (c ? vocab.find((v) => v.rel === mod12(c.root - o.key.tonic) && v.quality === c.quality) : undefined);
+  const before = find(prev);
+  const after = find(next);
+  return vocab
+    .map((v) => {
+      const root = mod12(o.key.tonic + v.rel);
+      const pcs = chordPcs({ root, quality: v.quality });
+      let score = melodyFit(melody, span.start, span.start + span.dur, pcs, bar, colourful) + v.prior;
+      if (before) score += transitionScore(before, v, 0, o.style);
+      if (after) score += transitionScore(v, after, 0, o.style);
+      const chord: Chord = { root, quality: v.quality, start: span.start, dur: span.dur, symbol: pcNameInKey(root, o.key) + SUFFIX[v.quality], roman: v.roman, fn: v.fn };
+      return { chord, score };
+    })
+    .sort((a, b) => b.score - a.score);
 }
 
 export function chordAt(chords: Chord[], unit: number): Chord {

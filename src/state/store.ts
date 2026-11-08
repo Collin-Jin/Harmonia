@@ -7,6 +7,7 @@ import type { AutotuneMode } from '../music/autotune';
 import type { Key } from '../music/theory';
 import type {
   Arrangement,
+  Chord,
   HarmonyOptions,
   HarmonySound,
   HarmonySource,
@@ -80,6 +81,10 @@ interface State {
   /** Melody pitches changed by the user, by performed onset (ms). */
   pitchEdits: Record<string, number>;
   harmonyEdits: Record<string, HarmonyEdit>;
+  /** Chords the user picked, each pinned to its span; they survive style and chord-rate changes. */
+  chordEdits: Chord[];
+  /** The edits the rest of the progression was last re-fitted around (null: not re-fitted). */
+  chordRefit: Chord[] | null;
   harmony: HarmonyOptions;
   harmonySound: HarmonySound;
   soundPrefs: Record<string, HarmonySound>;
@@ -108,6 +113,13 @@ interface State {
   setPartSound: (id: string, sound: HarmonySound | null) => void;
   editNotePitch: (partId: string, index: number, midi: number) => void;
   editNoteLyric: (partId: string, index: number, text: string) => void;
+  /** Use `chord` for its span, replacing any edit it overlaps. */
+  editChord: (chord: Chord) => void;
+  /** Drop the user's chord at `start` and go back to the automatic choice. */
+  revertChord: (start: number) => void;
+  /** Re-choose every chord the user didn't pick so it fits around the ones they did. */
+  refitChords: () => void;
+  resetChords: () => void;
   resetEdits: () => void;
   toast: (text: string, kind?: Toast['kind']) => void;
   reset: () => void;
@@ -143,7 +155,7 @@ export function parseLyric(text: string): Lyric | null {
 
 type Inputs = Pick<
   State,
-  'transcription' | 'harmony' | 'lyrics' | 'lyricEdits' | 'harmonySound' | 'soundPrefs' | 'harmonyEdits'
+  'transcription' | 'harmony' | 'lyrics' | 'lyricEdits' | 'harmonySound' | 'soundPrefs' | 'harmonyEdits' | 'chordEdits' | 'chordRefit'
 >;
 
 /** Melody notes with their syllables (recognised, then the user's corrections). */
@@ -172,7 +184,16 @@ function buildArrangement(s: Inputs): Arrangement | null {
   if (!tr || !tr.notes.length) return null;
   const { notes, phraseEnds } = melodyWithLyrics(tr, s.lyrics, s.lyricEdits);
   const raw = harmonize(
-    { melody: notes, key: tr.key, timeSig: tr.timeSig, bpm: tr.bpm, totalUnits: tr.totalUnits, phraseHints: phraseEnds },
+    {
+      melody: notes,
+      key: tr.key,
+      timeSig: tr.timeSig,
+      bpm: tr.bpm,
+      totalUnits: tr.totalUnits,
+      phraseHints: phraseEnds,
+      chordEdits: s.chordEdits,
+      refitLocks: s.chordRefit ?? undefined,
+    },
     s.harmony,
   );
   const arr = applySounds(raw, (p) => s.soundPrefs[p.id] ?? s.harmonySound);
@@ -243,6 +264,8 @@ export const useStore = create<State>((set, get) => {
     lyricEdits: {},
     pitchEdits: {},
     harmonyEdits: {},
+    chordEdits: [],
+    chordRefit: null,
     harmony: defaultHarmony,
     harmonySound: 'lyrics',
     soundPrefs: {},
@@ -275,6 +298,8 @@ export const useStore = create<State>((set, get) => {
         lyricEdits: {},
         pitchEdits: {},
         harmonyEdits: {},
+        chordEdits: [],
+        chordRefit: null,
         selection: null,
         phase: 'ready',
         title: title ?? get().title,
@@ -305,7 +330,8 @@ export const useStore = create<State>((set, get) => {
         });
         if (bpm !== undefined) next.tempoSource = 'manual';
       }
-      rebuild({ baseTranscription: next, transcription: applyPitchEdits(next, get().pitchEdits), timeSig: ts, selection: null });
+      // New tempo, metre or key re-grids the song, so pinned chords no longer line up with it.
+      rebuild({ baseTranscription: next, transcription: applyPitchEdits(next, get().pitchEdits), timeSig: ts, selection: null, chordEdits: [], chordRefit: null });
     },
 
     setPartMix: (id, p) => {
@@ -355,6 +381,23 @@ export const useStore = create<State>((set, get) => {
       const key = `${harmonySignature(s.harmony)}|${partId}|${n.start}`;
       rebuild({ harmonyEdits: { ...s.harmonyEdits, [key]: { ...s.harmonyEdits[key], lyric } } });
     },
+
+    editChord: (chord) => {
+      const end = chord.start + chord.dur;
+      const { edited: _, ...c } = chord;
+      const chordEdits = [...get().chordEdits.filter((e) => e.start + e.dur <= chord.start || e.start >= end), c].sort((a, b) => a.start - b.start);
+      rebuild({ chordEdits, selection: null });
+    },
+
+    revertChord: (start) => {
+      const s = get();
+      const refit = s.chordRefit?.filter((e) => e.start !== start) ?? null;
+      rebuild({ chordEdits: s.chordEdits.filter((e) => e.start !== start), chordRefit: refit?.length ? refit : null, selection: null });
+    },
+
+    refitChords: () => rebuild({ chordRefit: get().chordEdits.length ? [...get().chordEdits] : null, selection: null }),
+
+    resetChords: () => rebuild({ chordEdits: [], chordRefit: null, selection: null }),
 
     resetEdits: () => {
       const base = get().baseTranscription;
