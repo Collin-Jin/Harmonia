@@ -218,8 +218,11 @@ export function psolaShift(x: Float32Array, sr: number, frames: TuneFrame[], shi
   return out;
 }
 
-/** High-pass (rumble/hum), gate between notes, and gentle leveling. */
-export function cleanVoice(x: Float32Array, sr: number, notes: TuneNote[]): Float32Array {
+/**
+ * High-pass (rumble/hum), gate between notes, and gentle leveling. `mutes` are stretches the
+ * user removed (a breath or noise read as a note): they are faded out even inside a phrase.
+ */
+export function cleanVoice(x: Float32Array, sr: number, notes: TuneNote[], mutes: TuneNote[] = []): Float32Array {
   const N = x.length;
   const y = new Float32Array(N);
   // 2nd-order Butterworth high-pass at 75 Hz.
@@ -261,6 +264,16 @@ export function cleanVoice(x: Float32Array, sr: number, notes: TuneNote[]): Floa
     g = target > g ? att * g + (1 - att) * target : rel * g + (1 - rel) * target;
     y[i] *= g;
   }
+  // Removed notes go fully silent, with short fades so the cut doesn't click.
+  const fade = Math.round(0.015 * sr);
+  for (const m of mutes) {
+    const a = Math.floor(m.time * sr);
+    const b = Math.ceil(m.end * sr);
+    for (let i = Math.max(0, a - fade); i < Math.min(N, b + fade); i++) {
+      const g = i < a ? (a - i) / fade : i >= b ? (i - b + 1) / fade : 0;
+      y[i] *= Math.min(1, g);
+    }
+  }
   // Leveling: slow RMS compressor (3:1 above -16 dB of the loudest passage), then normalize.
   const win = Math.round(0.05 * sr);
   const env = new Float32Array(N);
@@ -299,11 +312,12 @@ export function processVoice(
   frames: TuneFrame[],
   notes: TuneNote[],
   mode: AutotuneMode,
+  mutes: TuneNote[] = [],
 ): Float32Array {
   const smooth = bridgeFrames(frames, 0.14);
   const windows = phraseWindows(notes, 0.5);
   const hold = holdUnvoiced(smooth, windows, 0.08);
   const tuned =
     mode === 'off' ? samples : psolaShift(samples, sampleRate, smooth, correctionCurve(smooth, notes, AUTOTUNE_PRESETS[mode]), 1, hold);
-  return cleanVoice(tuned, sampleRate, notes);
+  return cleanVoice(tuned, sampleRate, notes, mutes);
 }

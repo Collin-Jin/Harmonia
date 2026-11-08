@@ -1,9 +1,9 @@
-import { useStore } from './store';
+import { noteKey, useStore } from './store';
 import { getAudioContext, outputLatency, resumeAudio } from '../audio/context';
 import { mic } from '../audio/mic';
 import { Metronome } from '../audio/metronome';
 import { analyzeInWorker, decodeAudioFile, processVoiceInWorker, renderHarmonyVoicesInWorker } from '../audio/analysis';
-import { ArrangementPlayer, renderArrangement, type PlayOptions, type RecordingAudio } from '../audio/player';
+import { ArrangementPlayer, renderArrangement, type MelodyTone, type PlayOptions, type RecordingAudio } from '../audio/player';
 import { LiveSession } from '../audio/live';
 import { recognizeLyrics } from '../audio/lyricsClient';
 import { SAMPLES } from '../music/samples';
@@ -75,6 +75,7 @@ export async function stopRecording() {
     bpm: gridOriginSec !== undefined ? s.metronomeBpm : undefined,
     gridOriginSec,
     title: s.title,
+    review: true,
   });
 }
 
@@ -86,7 +87,8 @@ export async function cancelRecording() {
   useStore.setState({ phase: useStore.getState().transcription ? 'ready' : 'empty' });
 }
 
-async function analyze(samples: Float32Array, sampleRate: number, o: { bpm?: number; gridOriginSec?: number; title?: string; beats?: number }) {
+/** `review`: the user's own take, so they check the notes before seeing the arrangement. */
+async function analyze(samples: Float32Array, sampleRate: number, o: { bpm?: number; gridOriginSec?: number; title?: string; beats?: number; review?: boolean }) {
   const s = useStore.getState();
   const prevPhase = s.transcription ? 'ready' : 'empty';
   if (samples.length < sampleRate * 0.5) {
@@ -103,8 +105,9 @@ async function analyze(samples: Float32Array, sampleRate: number, o: { bpm?: num
       useStore.setState({ phase: prevPhase });
       return;
     }
-    s.setAnalysis({ recording: { samples, sampleRate }, frames: result.frames, transcription: result.transcription, title: o.title });
-    s.toast(`Transcribed ${result.transcription.notes.length} notes — harmonies ready.`, 'success');
+    s.setAnalysis({ recording: { samples, sampleRate }, frames: result.frames, transcription: result.transcription, title: o.title, review: o.review });
+    const n = result.transcription.notes.length;
+    s.toast(o.review ? `Heard ${n} notes — check them, then harmonize.` : `Transcribed ${n} notes — harmonies ready.`, 'success');
     void detectLyrics();
   } catch (e) {
     s.toast(`Analysis failed: ${(e as Error).message}`, 'error');
@@ -135,7 +138,7 @@ export async function importAudioFile(file: File) {
   useStore.setState({ phase: 'analyzing' });
   try {
     const { samples, sampleRate } = await decodeAudioFile(file);
-    await analyze(samples, sampleRate, { title: file.name.replace(/\.[^.]+$/, '') });
+    await analyze(samples, sampleRate, { title: file.name.replace(/\.[^.]+$/, ''), review: true });
   } catch (e) {
     useStore.getState().toast(`Could not read that audio file: ${(e as Error).message}`, 'error');
     useStore.setState({ phase: useStore.getState().transcription ? 'ready' : 'empty' });
@@ -173,8 +176,10 @@ function scheduleVoice() {
       const offset = tr.tuningCents / 100;
       const frames = st.frames.map((f) => ({ t: f.t, midi: f.midi === null ? null : f.midi + offset }));
       const notes = tr.notes.map((n) => ({ time: n.time, end: n.end, midi: n.midi }));
+      // notes the user removed (breaths, noise) are silenced, not left untuned
+      const mutes = (st.baseTranscription?.notes ?? []).filter((n) => st.deletedNotes[noteKey(n)]).map((n) => ({ time: n.time, end: n.end, midi: n.midi }));
       try {
-        const out = await processVoiceInWorker(rec.samples, rec.sampleRate, frames, notes, st.autotune);
+        const out = await processVoiceInWorker(rec.samples, rec.sampleRate, frames, notes, st.autotune, mutes);
         if (version !== voiceVersion) return resolve(null);
         const voice = { samples: out, sampleRate: rec.sampleRate };
         useStore.setState({ voice, voiceBusy: false });
@@ -336,6 +341,18 @@ export async function play(fromUnit = 0) {
   const arr = useStore.getState().arrangement;
   if (!arr) return;
   await player.play(arr, opts);
+  useStore.setState({ playing: true });
+}
+
+/** Play just the melody, as the tuned take or on a piano ("Check your notes"). */
+export async function playMelody(tone: MelodyTone, fromUnit = 0) {
+  const s = useStore.getState();
+  if (!s.arrangement) return;
+  stopLive();
+  const recording = tone === 'recording' ? await voiceForPlayback() : s.recording;
+  const st = useStore.getState();
+  if (!st.arrangement) return;
+  await player.play(st.arrangement, { fromUnit, mix: st.mix, melodySource: 'recording', recording, transcription: st.transcription, melodyOnly: tone });
   useStore.setState({ playing: true });
 }
 

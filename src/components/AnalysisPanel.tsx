@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react';
+import { ChevronRight, Minus, Plus } from 'lucide-react';
 import { useStore } from '../state/store';
 import { ALL_KEYS, keyName, midiName } from '../music/theory';
 import { PanelHead, Seg } from './ui';
@@ -9,10 +9,9 @@ export function AnalysisPanel() {
   const retranscribe = useStore((s) => s.retranscribe);
   const [bpmText, setBpmText] = useState(String(Math.round(tr.bpm)));
   useEffect(() => setBpmText(String(Math.round(tr.bpm))), [tr.bpm]);
-  // Folded to a summary unless the key is a guess worth checking.
-  const unsure = (tr.key.confidence ?? 1) < 0.6;
-  const [open, setOpen] = useState(unsure);
-  useEffect(() => setOpen(unsure), [tr.rawNotes, unsure]);
+  // Open while the notes are being checked; afterwards a summary, and Fix goes back to checking.
+  const open = useStore((s) => s.phase === 'review');
+  const openReview = useStore((s) => s.openReview);
 
   const pitches = tr.notes.map((n) => n.midi);
   const lo = Math.min(...pitches);
@@ -34,16 +33,15 @@ export function AnalysisPanel() {
         title="What I heard"
         sub={open ? 'fix anything I got wrong' : 'tap Fix if anything is off'}
         right={
-          <button
-            className={`btn sm ${open ? 'ghost icon' : ''}`}
-            onClick={() => setOpen(!open)}
-            aria-expanded={open}
-            aria-label={open ? 'Fold up' : 'Fix what I heard'}
-            title={open ? 'Fold up' : 'Correct the key, tempo or metre'}
-            data-testid="analysis-toggle"
-          >
-            {open ? <ChevronUp size={14} /> : <>Fix <ChevronDown size={13} /></>}
-          </button>
+          open ? (
+            <span className="chip" data-testid="note-count">
+              <strong>{tr.notes.length}</strong> notes
+            </span>
+          ) : (
+            <button className="btn sm" onClick={openReview} title="Check the notes, key, tempo or metre" data-testid="analysis-toggle">
+              Fix <ChevronRight size={13} />
+            </button>
+          )
         }
       />
       {!open && (

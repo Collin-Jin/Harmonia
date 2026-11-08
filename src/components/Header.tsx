@@ -15,7 +15,7 @@ export function Header({ onHelp }: { onHelp: () => void }) {
   const ready = phase === 'ready';
   const steps = [
     { mark: 'A', label: 'Sing', target: 'sec-capture', on: true },
-    { mark: 'B', label: 'Check', target: 'sec-analysis', on: ready },
+    { mark: 'B', label: 'Check', target: phase === 'review' ? 'sec-review' : 'sec-analysis', on: ready || phase === 'review' },
     { mark: 'C', label: 'Arrange', target: 'sec-harmony', on: ready },
     { mark: 'D', label: 'Score', target: 'sec-score', on: ready },
     { mark: 'E', label: 'Mix', target: 'sec-mix', on: ready },
@@ -54,7 +54,7 @@ export function Header({ onHelp }: { onHelp: () => void }) {
         {steps.map((s) => (
           <button
             key={s.mark}
-            className={`step ${(ready ? inView.has(s.target) : s.mark === 'A') || (s.mark === 'F' && liveActive) ? 'active' : ''}`}
+            className={`step ${(ready ? inView.has(s.target) : s.mark === (phase === 'review' ? 'B' : 'A')) || (s.mark === 'F' && liveActive) ? 'active' : ''}`}
             disabled={!s.on}
             onClick={() => go(s.target)}
             title={s.on ? `Go to ${s.mark} · ${s.label}` : 'Record or load a melody first'}

@@ -21,10 +21,10 @@ export function CapturePanel() {
   // Once a take is in, recording options step aside so the arrangement is within reach.
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (phase === 'ready') setOpen(false);
+    if (phase === 'ready' || phase === 'review') setOpen(false);
   }, [phase, title]);
 
-  if (phase === 'ready' && hasTake && !open)
+  if ((phase === 'ready' || phase === 'review') && hasTake && !open)
     return (
       <div className="panel compact" id="sec-capture" data-testid="capture-compact">
         <PanelHead mark="A" title="Sing" sub={<>your take · <b>{title}</b> · {notes} notes</>} />
@@ -46,7 +46,7 @@ export function CapturePanel() {
         title="Sing"
         sub="record, hum, or bring a melody"
         right={
-          phase === 'ready' &&
+          (phase === 'ready' || phase === 'review') &&
           hasTake && (
             <button className="btn sm ghost icon" onClick={() => setOpen(false)} aria-label="Fold up" title="Fold up">
               <ChevronUp size={14} />
