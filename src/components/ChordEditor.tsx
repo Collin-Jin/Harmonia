@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Undo2, WandSparkles, X } from 'lucide-react';
 import { useStore } from '../state/store';
 import { suggestChords } from '../music/chords';
@@ -34,6 +34,7 @@ export function ChordEditor() {
   const resetChords = useStore((s) => s.resetChords);
   const [open, setOpen] = useState<number | null>(null); // start unit of the chord being changed
   const [more, setMore] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
   const chords = arr?.chords ?? [];
   const i = open === null ? -1 : chords.findIndex((c) => c.start === open);
   const cur = i >= 0 ? chords[i] : null;
@@ -56,6 +57,13 @@ export function ChordEditor() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
+
+  // the choices open below the progression, often past the bottom of the side column
+  useEffect(() => {
+    if (open === null) return;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    editorRef.current?.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' });
+  }, [open, more]);
 
   if (!arr) return null;
   const top = suggestions[0]?.score ?? 0;
@@ -85,7 +93,7 @@ export function ChordEditor() {
       </div>
 
       {cur && (
-        <div className="chord-editor" data-testid="chord-editor">
+        <div className="chord-editor" data-testid="chord-editor" ref={editorRef}>
           <div className="chord-editor-head">
             <span>
               {spanLabel(arr, cur)} · <b>{cur.symbol}</b> {cur.edited && <em>your choice</em>}

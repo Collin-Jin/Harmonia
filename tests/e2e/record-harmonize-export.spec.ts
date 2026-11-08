@@ -59,6 +59,8 @@ test('record from microphone → transcribe → harmonize → play → export MI
   // ---- Change style / voices: choral SATB ----
   await page.getByTestId('style-choral').click();
   await page.locator('.seg button', { hasText: /^3$/ }).first().click();
+  // the mixer is folded to a summary until opened
+  await page.getByTestId('mix-toggle').click();
   await expect(page.locator('[data-testid^="strip-"]')).toHaveCount(4);
   const parts = await page.evaluate(() => (window as any).__harmonia.store.getState().arrangement.harmonies.map((h: any) => h.name));
   expect(parts).toEqual(['Alto', 'Tenor', 'Bass']);

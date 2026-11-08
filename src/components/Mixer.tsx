@@ -1,4 +1,5 @@
-import { Loader2, Mic2, Volume2 } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp, Loader2, Mic2, Volume2 } from 'lucide-react';
 import { PanelHead } from './ui';
 import { useStore } from '../state/store';
 import { midiName } from '../music/theory';
@@ -115,17 +116,47 @@ function Strip({ part, isMelody }: { part: VoicePart; isMelody?: boolean }) {
   );
 }
 
+/** The mixer stays folded to a line of the singers until you want to balance them. */
 export function Mixer() {
   const arr = useStore((s) => s.arrangement)!;
+  const mix = useStore((s) => s.mix);
+  const [open, setOpen] = useState(false);
+  const parts = [arr.melody, ...arr.harmonies];
+  const soloed = parts.some((p) => mix[p.id]?.solo);
   return (
-    <div className="panel" id="sec-mix">
-      <PanelHead mark="E" title="Mix" sub="balance the singers · M mutes, S solos" />
-      <div className="mixer">
-        <Strip part={arr.melody} isMelody />
-        {arr.harmonies.map((h) => (
-          <Strip key={h.id} part={h} />
-        ))}
-      </div>
+    <div className={`panel ${open ? '' : 'compact quiet'}`} id="sec-mix">
+      <PanelHead
+        mark="E"
+        title="Mix"
+        sub={open ? 'balance the singers · M mutes, S solos' : 'balance the singers'}
+        right={
+          <button className="btn sm ghost" onClick={() => setOpen(!open)} aria-expanded={open} data-testid="mix-toggle">
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />} {open ? 'Done' : 'Adjust'}
+          </button>
+        }
+      />
+      {open ? (
+        <div className="mixer">
+          <Strip part={arr.melody} isMelody />
+          {arr.harmonies.map((h) => (
+            <Strip key={h.id} part={h} />
+          ))}
+        </div>
+      ) : (
+        <div className="legend mix-summary">
+          {parts.map((p) => {
+            const m = mix[p.id];
+            const silent = m?.mute || (soloed && !m?.solo);
+            return (
+              <span key={p.id} className={silent ? 'silent' : ''}>
+                <i style={{ background: p.color }} />
+                {p.name}
+                {m?.solo ? ' · solo' : silent ? ' · muted' : ''}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

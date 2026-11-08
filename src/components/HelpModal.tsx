@@ -94,7 +94,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           </h4>
           <p>
             The player at the bottom plays the arrangement. Click its progress bar to jump to any bar, and use <b>Melody</b> to hear your voice, the
-            synth, or harmony only so you can sing along. In the mix, <b>M</b> mutes a part and <b>S</b> solos it.
+            synth, or harmony only so you can sing along. Open the mix with <b>Adjust</b>: <b>M</b> mutes a part and <b>S</b> solos it.
           </p>
         </section>
 
@@ -104,7 +104,7 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
           </h4>
           <ul>
             <li>
-              <b>Wear headphones</b>, otherwise the harmony leaks into the microphone. On speakers, turn on <i>Echo cancellation</i>.
+              <b>Wear headphones</b>, otherwise the harmony leaks into the microphone. On speakers, turn on <i>Echo cancellation</i> under <i>How the voices follow you</i>.
             </li>
             <li>
               Press <b>Sing live</b> and sing the melody again, from the top or anywhere. The voices follow your place, tempo, key and tuning. If you

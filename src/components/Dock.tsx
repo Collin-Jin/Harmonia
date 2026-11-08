@@ -5,6 +5,9 @@ import { currentPosition, play, stopPlayback } from '../state/controller';
 import { UNITS_PER_BEAT } from '../music/types';
 import { Seg } from './ui';
 
+/** The take whose harmony has been heard at least once; until then the play button is pointed out. */
+let heardTake: unknown = null;
+
 export function Dock() {
   const playing = useStore((s) => s.playing);
   const liveActive = useStore((s) => s.liveActive);
@@ -13,6 +16,9 @@ export function Dock() {
   const hasRecording = useStore((s) => !!s.recording);
   const set = useStore((s) => s.set);
   const partsBusy = useStore((s) => s.voicePartsBusy && s.harmonySource === 'voice');
+  const recording = useStore((s) => s.recording);
+  if (playing) heardTake = recording;
+  const cue = !playing && !liveActive && heardTake !== recording;
   const [pos, setPos] = useState<number | null>(null);
 
   useEffect(() => {
@@ -44,8 +50,13 @@ export function Dock() {
 
   return (
     <div className="dock" data-testid="dock">
+      {cue && (
+        <div className="dock-cue" role="status" data-testid="play-cue">
+          Your harmony is ready. Press play to hear it.
+        </div>
+      )}
       <button
-        className={`play-btn ${playing ? 'on' : ''}`}
+        className={`play-btn ${playing ? 'on' : ''} ${cue ? 'cue' : ''}`}
         onClick={() => (playing ? stopPlayback() : play(0))}
         aria-label={playing ? 'Stop' : 'Play arrangement'}
         title={playing ? 'Stop' : 'Play from the beginning'}

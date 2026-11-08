@@ -83,6 +83,7 @@ test('sung take: lyrics for singing (not on the score), edit notes, harmony soun
   await page.getByTestId('sound-oo').click();
   await expect.poll(async () => (await partLyrics(page, 'h1')).split(' ')[0]).toBe('Ooh');
   expect(await partLyrics(page, 'melody')).toContain('Twin kle');
+  await page.getByTestId('mix-toggle').click();
   await page.getByTestId('part-sound-h2').selectOption('lyrics');
   await expect.poll(async () => partLyrics(page, 'h2')).toContain('Twin kle');
   expect((await partLyrics(page, 'h1')).startsWith('Ooh')).toBe(true);
