@@ -1,4 +1,4 @@
-import { AudioLines, ChevronLeft, ChevronRight, Church, Dices, Mic2, Music4, Sparkles, Users, Waves } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Church, Dices, Music4, Sparkles, Users, Waves } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from '../state/store';
 import { STYLE_INFO } from '../music/harmony';
@@ -45,15 +45,11 @@ export function HarmonyPanel() {
   const variationIndex = useStore((s) => s.variationIndex);
   const sound = useStore((s) => s.harmonySound);
   const setHarmonySound = useStore((s) => s.setHarmonySound);
-  const source = useStore((s) => s.harmonySource);
-  const hasRecording = useStore((s) => !!s.recording);
   const lyrics = useStore((s) => s.lyrics);
-  const set = useStore((s) => s.set);
   const info = STYLE_INFO[h.style];
   const wordless = lyrics.hummed || lyrics.status === 'none' || lyrics.status === 'off';
   let soundHint = '';
   if (sound === 'lyrics' && wordless) soundHint = lyrics.hummed ? 'you hummed, so they hum along' : 'no words found, so they sing like you';
-  else if (sound === 'lyrics' && source === 'choir') soundHint = 'the synth sings the words on a vowel';
 
   return (
     <div className="panel" data-testid="harmony-panel" id="sec-harmony">
@@ -166,22 +162,6 @@ export function HarmonyPanel() {
         </div>
         <div className="field">
           <div className="label">
-            <span>Chord changes</span>
-            <span className="hint">how often the harmony moves</span>
-          </div>
-          <Seg
-            value={h.harmonicRhythm}
-            options={[
-              { value: 'auto', label: 'Auto' },
-              { value: 'bar', label: 'Per bar' },
-              { value: 'half', label: 'Half bar' },
-              { value: 'beat', label: 'Per beat' },
-            ]}
-            onChange={(v) => setHarmony({ harmonicRhythm: v })}
-          />
-        </div>
-        <div className="field">
-          <div className="label">
             <span>Harmonic colour</span>
             <span className="hint">{h.complexity < 0.34 ? 'plain triads' : h.complexity < 0.67 ? 'with sevenths' : 'rich & chromatic'}</span>
           </div>
@@ -203,20 +183,6 @@ export function HarmonyPanel() {
       </Group>
 
       <Group title="Sound">
-        <div className="field">
-          <div className="label">
-            <span>Who sings them</span>
-            {!hasRecording && <span className="hint">needs a recording</span>}
-          </div>
-          <Seg
-            value={source}
-            options={[
-              { value: 'voice', label: <><Mic2 size={13} /> Your voice</>, disabled: !hasRecording, title: 'Your own recording, re-pitched onto every harmony line' },
-              { value: 'choir', label: <><AudioLines size={13} /> Choir synth</>, title: 'The built-in vocal synthesizer' },
-            ]}
-            onChange={(v) => set({ harmonySource: v })}
-          />
-        </div>
         <div className="field">
           <div className="label">
             <span>What they sing</span>
