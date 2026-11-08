@@ -364,6 +364,25 @@ kbd {
 [id^='sec-'] {
   scroll-margin-top: 92px;
 }
+/* With a song loaded, the side column stays beside the score and scrolls on its own, stopping
+   short of the player so Arrange is always within reach while you read and hear the result. */
+@media (min-width: 1181px) {
+  .workspace.ready .sidebar {
+    position: sticky;
+    top: 92px;
+    max-height: calc(100vh - 92px - 108px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* room for the panels' printed shadow, which overflow would otherwise clip */
+    padding: 0 8px 8px 0;
+    margin-right: -8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
+  .workspace.ready .sidebar [id^='sec-'] {
+    scroll-margin-top: 0;
+  }
+}
 
 @media (max-width: 1180px) {
   .workspace {
@@ -376,8 +395,37 @@ kbd {
   .workspace .stage {
     order: -1;
   }
-  .steps {
+  /* one column: the summaries of A and B, then the score with Arrange right under it */
+  .workspace.ready {
+    gap: 22px;
+  }
+  .workspace.ready .sidebar,
+  .workspace.ready .stage {
+    display: contents;
+  }
+  #sec-capture {
+    order: 1;
+  }
+  #sec-analysis {
+    order: 2;
+  }
+  #sec-score {
+    order: 3;
+  }
+  #sec-harmony {
+    order: 4;
+  }
+  #sec-mix {
+    order: 5;
+  }
+  #sec-live {
+    order: 6;
+  }
+  .steps .lbl {
     display: none;
+  }
+  .step {
+    padding: 4px;
   }
 }
 @media (max-width: 900px) {
@@ -1173,6 +1221,63 @@ input[type='range']:disabled {
   flex: 1 0 100%;
 }
 
+/* Folded panels: A after a take is in, B once its reading is settled */
+.panel.compact {
+  padding-bottom: 16px;
+}
+.panel.compact .panel-head {
+  margin-bottom: 10px;
+}
+.panel.compact .panel-head h2 small b {
+  font-style: normal;
+  color: var(--ink);
+}
+.compact-actions,
+.summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+.rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff6ea;
+}
+
+/* Arrange: Harmony / Chords / Sound */
+.group + .group {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1.5px dashed var(--rule);
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.group-head h3 {
+  font-family: var(--display);
+  font-size: 17px;
+  font-style: italic;
+  font-weight: 600;
+}
+.group-head + .field {
+  margin-top: 12px;
+}
+.variation-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.variation-nav .count {
+  min-width: 40px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--muted);
+}
 /* ==========================================================================
    D · Score
    ========================================================================== */

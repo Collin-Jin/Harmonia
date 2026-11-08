@@ -107,7 +107,10 @@ export interface HarmonyOptions {
   placement: Placement;
   harmonicRhythm: HarmonicRhythm;
   complexity: number; // 0..1
+  /** Varies the voicing ("New voicing"); also the chords when `chordSeed` is not given. */
   seed: number;
+  /** Varies the chord progression ("New chords"). */
+  chordSeed?: number;
 }
 
 export type ClefKind = 'treble' | 'treble8' | 'bass';

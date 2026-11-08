@@ -1,4 +1,4 @@
-import { AudioLines, Church, Dices, Mic2, Music4, RotateCcw, Sparkles, Users, Waves } from 'lucide-react';
+import { AudioLines, ChevronLeft, ChevronRight, Church, Dices, Mic2, Music4, Sparkles, Users, Waves } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from '../state/store';
 import { STYLE_INFO } from '../music/harmony';
@@ -23,9 +23,26 @@ const SOUNDS: { v: HarmonySound; sub: string }[] = [
   { v: 'mm', sub: 'hummed' },
 ];
 
+/** A titled group of controls inside a panel. */
+function Group({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="group">
+      <div className="group-head">
+        <h3>{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export function HarmonyPanel() {
   const h = useStore((s) => s.harmony);
   const setHarmony = useStore((s) => s.setHarmony);
+  const newVariation = useStore((s) => s.newVariation);
+  const stepVariation = useStore((s) => s.stepVariation);
+  const variations = useStore((s) => s.variations);
+  const variationIndex = useStore((s) => s.variationIndex);
   const sound = useStore((s) => s.harmonySound);
   const setHarmonySound = useStore((s) => s.setHarmonySound);
   const source = useStore((s) => s.harmonySource);
@@ -45,149 +62,182 @@ export function HarmonyPanel() {
         title="Arrange"
         sub="shape the harmony"
         right={
-          <>
-            {h.seed !== 0 && (
-              <button className="btn sm ghost icon" onClick={() => setHarmony({ seed: 0 })} title="Back to the first arrangement" aria-label="Back to the first arrangement">
-                <RotateCcw size={13} />
+          variations.length > 1 && (
+            <div className="variation-nav" data-testid="variation-nav">
+              <button
+                className="btn sm ghost icon"
+                onClick={() => stepVariation(-1)}
+                disabled={variationIndex === 0}
+                aria-label="Previous arrangement"
+                title="Previous arrangement"
+                data-testid="variation-prev"
+              >
+                <ChevronLeft size={14} />
               </button>
-            )}
-            <button
-              className="btn sm"
-              data-testid="variation"
-              onClick={() => setHarmony({ seed: 1 + Math.floor(Math.random() * 1e6) })}
-              title="Compose a different arrangement in the same style"
-            >
-              <Dices size={14} /> Try another
-            </button>
-          </>
+              <span className="count" title="Arrangements you have tried" data-testid="variation-count">
+                {variationIndex + 1} / {variations.length}
+              </span>
+              <button
+                className="btn sm ghost icon"
+                onClick={() => stepVariation(1)}
+                disabled={variationIndex === variations.length - 1}
+                aria-label="Next arrangement"
+                title="Next arrangement"
+                data-testid="variation-next"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )
         }
       />
 
-      <div className="field">
-        <div className="label">Style</div>
-        <div className="styles">
-          {(Object.keys(STYLE_INFO) as HarmonyStyle[]).map((s) => (
-            <button
-              key={s}
-              className={`style-card ${h.style === s ? 'on' : ''}`}
-              onClick={() => setHarmony({ style: s })}
-              data-testid={`style-${s}`}
-              title={STYLE_INFO[s].blurb}
-            >
-              {ICONS[s]} {STYLE_INFO[s].label}
-            </button>
-          ))}
+      <Group
+        title="Harmony"
+        action={
+          <button className="btn sm" onClick={() => newVariation('voicing')} data-testid="variation-voicing" title="Write different harmony lines over the same chords">
+            <Dices size={13} /> New voicing
+          </button>
+        }
+      >
+        <div className="field">
+          <div className="label">Style</div>
+          <div className="styles">
+            {(Object.keys(STYLE_INFO) as HarmonyStyle[]).map((s) => (
+              <button
+                key={s}
+                className={`style-card ${h.style === s ? 'on' : ''}`}
+                onClick={() => setHarmony({ style: s })}
+                data-testid={`style-${s}`}
+                title={STYLE_INFO[s].blurb}
+              >
+                {ICONS[s]} {STYLE_INFO[s].label}
+              </button>
+            ))}
+          </div>
+          <p className="style-blurb">{info.blurb}</p>
         </div>
-        <p className="style-blurb">{info.blurb}</p>
-      </div>
 
-      <div className="field">
-        <div className="label">
-          <span>Harmony parts</span>
-          {info.maxVoices < 4 && <span className="hint">up to {info.maxVoices} in this style</span>}
-        </div>
-        <Seg
-          value={Math.min(h.voices, info.maxVoices)}
-          options={[1, 2, 3, 4].map((n) => ({ value: n, label: n, disabled: n > info.maxVoices }))}
-          onChange={(v) => setHarmony({ voices: v })}
-        />
-      </div>
-      {info.placement && (
         <div className="field">
           <div className="label">
-            <span>Where they sit</span>
-            <span className="hint">relative to your melody</span>
+            <span>Harmony parts</span>
+            {info.maxVoices < 4 && <span className="hint">up to {info.maxVoices} in this style</span>}
           </div>
           <Seg
-            value={h.placement}
-            options={[
-              { value: 'above', label: 'Above' },
-              { value: 'around', label: 'Around' },
-              { value: 'below', label: 'Below' },
-            ]}
-            onChange={(v) => setHarmony({ placement: v })}
+            value={Math.min(h.voices, info.maxVoices)}
+            options={[1, 2, 3, 4].map((n) => ({ value: n, label: n, disabled: n > info.maxVoices }))}
+            onChange={(v) => setHarmony({ voices: v })}
           />
         </div>
-      )}
 
-      <div className="field">
-        <div className="label">
-          <span>Who sings them</span>
-          {!hasRecording && <span className="hint">needs a recording</span>}
-        </div>
-        <Seg
-          value={source}
-          options={[
-            { value: 'voice', label: <><Mic2 size={13} /> Your voice</>, disabled: !hasRecording, title: 'Your own recording, re-pitched onto every harmony line' },
-            { value: 'choir', label: <><AudioLines size={13} /> Choir synth</>, title: 'The built-in vocal synthesizer' },
-          ]}
-          onChange={(v) => set({ harmonySource: v })}
-        />
-      </div>
-      <div className="field">
-        <div className="label">
-          <span>What they sing</span>
-          <span className="hint">{soundHint}</span>
-        </div>
-        <div className="sound-picker" data-testid="sound-picker">
-          {SOUNDS.map((o) => (
-            <button
-              key={o.v}
-              className={`sound ${sound === o.v ? 'on' : ''}`}
-              onClick={() => setHarmonySound(o.v)}
-              data-testid={`sound-${o.v}`}
-              title={o.v === 'lyrics' ? 'The harmony sings the same words as the melody' : `The harmony sings “${SOUND_LABEL[o.v]}”`}
-            >
-              <b>{o.v === 'lyrics' ? 'Lyrics' : SOUND_LABEL[o.v]}</b>
-              <span>{o.sub}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+        {info.placement && (
+          <div className="field">
+            <div className="label">
+              <span>Where they sit</span>
+              <span className="hint">relative to your melody</span>
+            </div>
+            <Seg
+              value={h.placement}
+              options={[
+                { value: 'above', label: 'Above' },
+                { value: 'around', label: 'Around' },
+                { value: 'below', label: 'Below' },
+              ]}
+              onChange={(v) => setHarmony({ placement: v })}
+            />
+          </div>
+        )}
+      </Group>
 
-      <div className="field">
-        <div className="label">
-          <span>Chord changes</span>
-          <span className="hint">how often the harmony moves</span>
+      <Group
+        title="Chords"
+        action={
+          <button className="btn sm" onClick={() => newVariation('chords')} data-testid="variation-chords" title="Choose a different chord progression (your own chord choices stay)">
+            <Dices size={13} /> New chords
+          </button>
+        }
+      >
+        <div className="field">
+          <div className="label">
+            <span>Chord progression</span>
+            <span className="hint">click a chord to change it</span>
+          </div>
+          <ChordEditor />
         </div>
-        <Seg
-          value={h.harmonicRhythm}
-          options={[
-            { value: 'auto', label: 'Auto' },
-            { value: 'bar', label: 'Per bar' },
-            { value: 'half', label: 'Half bar' },
-            { value: 'beat', label: 'Per beat' },
-          ]}
-          onChange={(v) => setHarmony({ harmonicRhythm: v })}
-        />
-      </div>
-      <div className="field">
-        <div className="label">
-          <span>Harmonic colour</span>
-          <span className="hint">{h.complexity < 0.34 ? 'plain triads' : h.complexity < 0.67 ? 'with sevenths' : 'rich & chromatic'}</span>
+        <div className="field">
+          <div className="label">
+            <span>Chord changes</span>
+            <span className="hint">how often the harmony moves</span>
+          </div>
+          <Seg
+            value={h.harmonicRhythm}
+            options={[
+              { value: 'auto', label: 'Auto' },
+              { value: 'bar', label: 'Per bar' },
+              { value: 'half', label: 'Half bar' },
+              { value: 'beat', label: 'Per beat' },
+            ]}
+            onChange={(v) => setHarmony({ harmonicRhythm: v })}
+          />
         </div>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          style={{ ['--fill' as string]: `${h.complexity * 100}%` }}
-          value={h.complexity}
-          onChange={(e) => setHarmony({ complexity: Number(e.target.value) })}
-          aria-label="Harmonic colour"
-        />
-        <div className="range-ends">
-          <span>simple</span>
-          <span>colourful</span>
+        <div className="field">
+          <div className="label">
+            <span>Harmonic colour</span>
+            <span className="hint">{h.complexity < 0.34 ? 'plain triads' : h.complexity < 0.67 ? 'with sevenths' : 'rich & chromatic'}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            style={{ ['--fill' as string]: `${h.complexity * 100}%` }}
+            value={h.complexity}
+            onChange={(e) => setHarmony({ complexity: Number(e.target.value) })}
+            aria-label="Harmonic colour"
+          />
+          <div className="range-ends">
+            <span>simple</span>
+            <span>colourful</span>
+          </div>
         </div>
-      </div>
-      <div className="field">
-        <div className="label">
-          <span>Chord progression</span>
-          <span className="hint">click a chord to change it</span>
+      </Group>
+
+      <Group title="Sound">
+        <div className="field">
+          <div className="label">
+            <span>Who sings them</span>
+            {!hasRecording && <span className="hint">needs a recording</span>}
+          </div>
+          <Seg
+            value={source}
+            options={[
+              { value: 'voice', label: <><Mic2 size={13} /> Your voice</>, disabled: !hasRecording, title: 'Your own recording, re-pitched onto every harmony line' },
+              { value: 'choir', label: <><AudioLines size={13} /> Choir synth</>, title: 'The built-in vocal synthesizer' },
+            ]}
+            onChange={(v) => set({ harmonySource: v })}
+          />
         </div>
-        <ChordEditor />
-      </div>
+        <div className="field">
+          <div className="label">
+            <span>What they sing</span>
+            <span className="hint">{soundHint}</span>
+          </div>
+          <div className="sound-picker" data-testid="sound-picker">
+            {SOUNDS.map((o) => (
+              <button
+                key={o.v}
+                className={`sound ${sound === o.v ? 'on' : ''}`}
+                onClick={() => setHarmonySound(o.v)}
+                data-testid={`sound-${o.v}`}
+                title={o.v === 'lyrics' ? 'The harmony sings the same words as the melody' : `The harmony sings “${SOUND_LABEL[o.v]}”`}
+              >
+                <b>{o.v === 'lyrics' ? 'Lyrics' : SOUND_LABEL[o.v]}</b>
+                <span>{o.sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Group>
     </div>
   );
 }

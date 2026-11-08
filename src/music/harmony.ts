@@ -30,7 +30,7 @@ interface Slot {
 }
 
 export const STYLE_INFO: Record<HarmonyStyle, { label: string; blurb: string; maxVoices: number; placement: boolean }> = {
-  pop: { label: 'Pop Stack', blurb: 'Tight parallel 3rds & 6ths that move with your melody — modern vocal stacks.', maxVoices: 4, placement: true },
+  pop: { label: 'Pop Stack', blurb: '3rds and 6ths that follow your melody and land on the chord — modern vocal stacks.', maxVoices: 3, placement: false },
   choral: { label: 'Choral SATB', blurb: 'Your melody as soprano over classical four-part voice leading.', maxVoices: 4, placement: false },
   jazz: { label: 'Jazz Close', blurb: 'Close-voiced 7ths, 9ths & colour tones beneath the lead.', maxVoices: 4, placement: false },
   barbershop: { label: 'Barbershop', blurb: 'Lead melody with tenor on top, ringing dominant sevenths.', maxVoices: 3, placement: false },
@@ -42,24 +42,13 @@ function slotsFor(style: HarmonyStyle, n: number, placement: Placement, variant:
   let list: Slot[];
   switch (style) {
     case 'pop': {
-      // Variations swap between equally idiomatic stack shapes rather than adding randomness.
-      // Shapes are inversions of the chord around the lead (3rds with 4ths/6ths) so no two
-      // voices are octave duplicates; from three voices on, a root bass grounds the stack.
+      // A 3rd above, a 3rd or 4th below, then a top part. No bass: the singer's voice re-pitched
+      // that far down buzzes. Variations swap between equally idiomatic shapes rather than
+      // adding randomness.
       const alt = variant % 2 === 1;
-      const bass = S('Bass', 'B', placement === 'below' ? -17 : -14, { bass: true });
-      if (placement === 'above') {
-        const hi = S('High Harmony', 'Hi', 4, { parallel: true, shadow: 2 });
-        const top = alt ? S('Top Harmony', 'Top', 7) : S('Top Harmony', 'Top', 9, { shadow: 5 });
-        list = n >= 4 ? [hi, top, S('Low Harmony', 'Lo', -5), bass] : n === 3 ? [hi, top, bass] : [hi, top];
-      } else if (placement === 'below') {
-        const lo = alt ? S('Low Harmony', 'Lo', -5, { parallel: true, shadow: -3 }) : S('Low Harmony', 'Lo', -4, { parallel: true, shadow: -2 });
-        const lo2 = alt ? S('Lower Harmony', 'Lo2', -9, { shadow: -5 }) : S('Lower Harmony', 'Lo2', -8, { shadow: -5 });
-        list = n >= 4 ? [lo, lo2, S('Deep Harmony', 'Deep', -12), bass] : n === 3 ? [lo, lo2, bass] : [lo, lo2];
-      } else {
-        const hi = S('High Harmony', 'Hi', 4, { parallel: true, shadow: 2 });
-        const lo = alt ? S('Low Harmony', 'Lo', -5, { parallel: true, shadow: -3 }) : S('Low Harmony', 'Lo', -4, { parallel: true, shadow: -2 });
-        list = n >= 4 ? [hi, lo, S('Top Harmony', 'Top', 8), bass] : n === 3 ? [hi, lo, bass] : [hi, lo];
-      }
+      const hi = S('High Harmony', 'Hi', 4, { parallel: true, shadow: 2 });
+      const lo = alt ? S('Low Harmony', 'Lo', -5, { parallel: true, shadow: -3 }) : S('Low Harmony', 'Lo', -4, { parallel: true, shadow: -2 });
+      list = [hi, lo, S('Top Harmony', 'Top', 8)];
       break;
     }
     case 'choral':
@@ -482,7 +471,7 @@ export function harmonize(input: HarmonizeInput, opts: HarmonyOptions): Arrangem
         style,
         complexity: opts.complexity,
         totalUnits: input.totalUnits,
-        seed: opts.seed,
+        seed: opts.chordSeed ?? opts.seed,
         phraseHints: input.phraseHints,
         locks: input.refitLocks,
       })

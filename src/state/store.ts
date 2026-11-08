@@ -51,6 +51,12 @@ export interface HarmonyEdit {
   lyric?: Lyric | null;
 }
 
+/** One arrangement variation: the seeds behind its chords and its voicing. */
+export interface Variation {
+  seed: number;
+  chordSeed: number;
+}
+
 /** The note the user has selected in the score for editing. */
 export interface Selection {
   partId: string;
@@ -86,6 +92,9 @@ interface State {
   /** The edits the rest of the progression was last re-fitted around (null: not re-fitted). */
   chordRefit: Chord[] | null;
   harmony: HarmonyOptions;
+  /** Arrangements visited with New chords / New voicing, so the user can step back and forth. */
+  variations: Variation[];
+  variationIndex: number;
   harmonySound: HarmonySound;
   soundPrefs: Record<string, HarmonySound>;
   harmonySource: HarmonySource;
@@ -105,6 +114,9 @@ interface State {
 
   set: (p: Partial<State>) => void;
   setHarmony: (p: Partial<HarmonyOptions>) => void;
+  /** Compose a different progression (chords) or a different set of lines over the same chords (voicing). */
+  newVariation: (kind: 'chords' | 'voicing') => void;
+  stepVariation: (dir: -1 | 1) => void;
   setAnalysis: (r: { recording: RecordingAudio; frames: PitchFrame[]; transcription: Transcription; title?: string }) => void;
   setLyrics: (p: Partial<LyricsState>) => void;
   retranscribe: (p: { bpm?: number; timeSig?: TimeSignature; key?: Key }) => void;
@@ -132,7 +144,31 @@ const defaultHarmony: HarmonyOptions = {
   harmonicRhythm: 'auto',
   complexity: 0.35,
   seed: 0,
+  chordSeed: 0,
 };
+
+const randomSeed = () => 1 + Math.floor(Math.random() * 1e6);
+
+/** Share of harmony notes that differ between two arrangements of the same melody (0..1). */
+function voicingDistance(a: Arrangement, b: Arrangement): number {
+  let diff = 0;
+  let total = 0;
+  a.live.forEach((st, i) =>
+    st.pitches.forEach((p, v) => {
+      total++;
+      if (p !== b.live[i]?.pitches[v]) diff++;
+    }),
+  );
+  return total ? diff / total : 0;
+}
+
+/** How many beats of the song sit under a different chord in `b` than in `a`. */
+function chordDistance(a: Arrangement, b: Arrangement): number {
+  const at = (arr: Arrangement, u: number) => [...arr.chords].reverse().find((c) => c.start <= u)?.symbol;
+  let diff = 0;
+  for (let u = 0; u < a.totalUnits; u += 4) if (at(a, u) !== at(b, u)) diff++;
+  return diff;
+}
 
 const noLyrics: LyricsState = { status: 'off', progress: 0, words: [], hummed: false };
 
@@ -141,7 +177,7 @@ export const noteKey = (n: { time: number }) => String(Math.round(n.time * 1000)
 
 /** Harmony edits belong to one particular arrangement (style, voices, …). */
 export function harmonySignature(h: HarmonyOptions): string {
-  return [h.style, h.voices, h.placement, h.harmonicRhythm, h.complexity.toFixed(2), h.seed].join(':');
+  return [h.style, h.voices, h.placement, h.harmonicRhythm, h.complexity.toFixed(2), h.seed, h.chordSeed ?? ''].join(':');
 }
 
 /** "twin-" → begins a word that continues; "" → no syllable. */
@@ -267,6 +303,8 @@ export const useStore = create<State>((set, get) => {
     chordEdits: [],
     chordRefit: null,
     harmony: defaultHarmony,
+    variations: [{ seed: 0, chordSeed: 0 }],
+    variationIndex: 0,
     harmonySound: 'lyrics',
     soundPrefs: {},
     harmonySource: 'voice',
@@ -285,6 +323,37 @@ export const useStore = create<State>((set, get) => {
     set: (p) => set(p as any),
 
     setHarmony: (p) => rebuild({ harmony: { ...get().harmony, ...p }, selection: null }),
+
+    newVariation: (kind) => {
+      const s = get();
+      const cur = s.arrangement;
+      if (!cur) return;
+      // Seeds are cheap to try: keep the first that sounds clearly different, else the most different.
+      let best: { h: HarmonyOptions; d: number } | null = null;
+      for (let k = 0; k < 12; k++) {
+        const h = kind === 'chords' ? { ...s.harmony, chordSeed: randomSeed() } : { ...s.harmony, seed: randomSeed() };
+        const arr = buildArrangement({ ...s, harmony: h });
+        if (!arr) return;
+        const d = kind === 'chords' ? chordDistance(cur, arr) : voicingDistance(cur, arr);
+        if (!best || d > best.d) best = { h, d };
+        if (kind === 'chords' ? d >= 2 : d >= 0.15) break;
+      }
+      if (!best || best.d === 0) {
+        get().toast(kind === 'chords' ? 'Every chord is one you picked, so there is nothing left to vary.' : 'No other voicing fits these settings.');
+        return;
+      }
+      const v: Variation = { seed: best.h.seed, chordSeed: best.h.chordSeed ?? 0 };
+      const variations = [...s.variations.slice(0, s.variationIndex + 1), v].slice(-20);
+      rebuild({ harmony: best.h, variations, variationIndex: variations.length - 1, selection: null });
+    },
+
+    stepVariation: (dir) => {
+      const s = get();
+      const i = s.variationIndex + dir;
+      const v = s.variations[i];
+      if (!v) return;
+      rebuild({ harmony: { ...s.harmony, ...v }, variationIndex: i, selection: null });
+    },
 
     setAnalysis: ({ recording, frames, transcription, title }) => {
       rebuild({
