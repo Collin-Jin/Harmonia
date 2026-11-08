@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from './state/store';
 import { Header } from './components/Header';
 import { CapturePanel } from './components/CapturePanel';
@@ -13,17 +13,20 @@ import { Mixer } from './components/Mixer';
 import { Dock } from './components/Dock';
 import { HelpModal } from './components/HelpModal';
 import { Toasts } from './components/Toasts';
+import { useScrollEdges } from './components/useScrollEdges';
 
 export default function App() {
   const phase = useStore((s) => s.phase);
   const hasArrangement = useStore((s) => !!s.arrangement);
   const [help, setHelp] = useState(false);
+  const sidebar = useRef<HTMLElement>(null);
+  useScrollEdges(sidebar);
 
   return (
     <div className="app">
       <Header onHelp={() => setHelp(true)} />
       <main className={`workspace ${phase === 'ready' || phase === 'review' ? 'ready' : ''}`}>
-        <aside className="sidebar">
+        <aside className="sidebar" ref={sidebar}>
           <CapturePanel />
           {hasArrangement && <AnalysisPanel />}
           {hasArrangement && phase === 'ready' && <HarmonyPanel />}

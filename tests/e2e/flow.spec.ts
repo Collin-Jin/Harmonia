@@ -11,7 +11,9 @@ test('after harmonizing: play is pointed out, one section is marked, editors ope
   await expect(page.locator('.steps [aria-current=location]')).toHaveCount(1);
   await expect(page.locator('.steps .step.active')).toHaveCount(1);
 
-  // a chord's choices open fully in view, even from the bottom of the side column
+  // Chords and Sound fold to one line each; a chord's choices open fully in view
+  await expect(page.getByTestId('sound-fold')).toContainText('Lyrics');
+  await page.getByTestId('chords-fold').click();
   await page.locator('[data-testid=chords] button').last().click();
   await expect(page.getByTestId('chord-editor')).toBeInViewport({ ratio: 1 });
   await expect(page.locator('.steps .step.active')).toHaveText(/Arrange/);
@@ -32,11 +34,19 @@ test('after harmonizing: play is pointed out, one section is marked, editors ope
   await page.getByTestId('mix-toggle').click();
   await expect(page.locator('[data-testid^="strip-"]')).toHaveCount(3);
 
-  // play is pointed out once, until it is pressed
+  // play is pointed out once, inside the player, until it is pressed
   await expect(page.getByTestId('play-cue')).toBeVisible();
+  const cue = (await page.getByTestId('play-cue').boundingBox())!;
+  const bar = (await page.getByTestId('dock').boundingBox())!;
+  expect(cue.y).toBeGreaterThanOrEqual(bar.y);
   await page.getByTestId('play-button').click();
   await expect(page.getByTestId('play-cue')).toHaveCount(0);
   await page.getByTestId('play-button').click();
   await expect(page.getByTestId('play-cue')).toHaveCount(0);
+  // the pinned side column never slides under the header, even at the end of the page
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const header = (await page.locator('.header').boundingBox())!;
+  const side = (await page.locator('.sidebar').boundingBox())!;
+  expect(side.y).toBeGreaterThanOrEqual(header.y + header.height);
   expect(errors).toEqual([]);
 });

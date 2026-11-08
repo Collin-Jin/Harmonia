@@ -7,7 +7,9 @@ test('change one chord, keep it through a style change, re-fit around it, reset'
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.goto('/');
   await page.getByTestId('sample-ode-to-joy').click();
-  await expect(page.getByTestId('chords').locator('.chord').first()).toBeVisible({ timeout: 60_000 });
+  // Chords is folded to a summary line until opened
+  await page.getByTestId('chords-fold').click({ timeout: 60_000 });
+  await expect(page.getByTestId('chords').locator('.chord').first()).toBeVisible();
   const before: string[] = await chordSymbols(page);
   expect(before).toContain('Am@48');
 

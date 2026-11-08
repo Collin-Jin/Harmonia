@@ -80,6 +80,7 @@ test('sung take: lyrics for singing (not on the score), edit notes, harmony soun
   expect(await partLyrics(page, 'melody')).toBe('Twin kle twin kle lit tle star how I won der what you are');
 
   // ---- Harmony sound: everyone on "ooh", then one part back on the words ----
+  await page.getByTestId('sound-fold').click();
   await page.getByTestId('sound-oo').click();
   await expect.poll(async () => (await partLyrics(page, 'h1')).split(' ')[0]).toBe('Ooh');
   expect(await partLyrics(page, 'melody')).toContain('Twin kle');
@@ -134,6 +135,7 @@ test('hummed take: no lyrics in the score, harmony can sing a vowel', async ({ p
   const anyLyric = [s.arrangement.melody, ...s.arrangement.harmonies].some((p: any) => p.notes.some((n: any) => n.lyric));
   expect(anyLyric).toBe(false);
 
+  await page.getByTestId('sound-fold').click();
   await page.getByTestId('sound-mm').click();
   await expect.poll(async () => (await partLyrics(page, 'h1')).split(' ')[0]).toBe('Mmm');
   expect((await partLyrics(page, 'melody')).replace(/[· ]/g, '')).toBe('');

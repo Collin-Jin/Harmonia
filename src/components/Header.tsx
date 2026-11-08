@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CircleHelp } from 'lucide-react';
 import { useStore } from '../state/store';
 import { keyName } from '../music/theory';
@@ -30,8 +30,17 @@ export function Header({ onHelp }: { onHelp: () => void }) {
     { mark: 'F', label: 'Perform live', target: 'sec-live', on: ready },
   ];
   const inView = useSectionInView(steps.map((s) => s.target), phase);
+  const ref = useRef<HTMLElement>(null);
+  // the pinned side column and jump targets sit below the header at whatever height it wraps to
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty('--header-h', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <header className="header">
+    <header className="header" ref={ref}>
       <div className="brand">
         <Logo />
         <div>

@@ -48,7 +48,7 @@ test('record from microphone → transcribe → harmonize → play → export MI
   await expect(page.getByTestId('key-select')).toHaveValue('0');
   await page.getByTestId('review-continue').click();
   await expect(page.getByTestId('analysis-summary')).toContainText('C major');
-  await expect(page.getByTestId('chords').locator('.chord').first()).toBeVisible();
+  await expect(page.getByTestId('chords-fold')).toBeVisible();
 
   // ---- Sheet music rendered by OSMD ----
   const score = page.getByTestId('score');
